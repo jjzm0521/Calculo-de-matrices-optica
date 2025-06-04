@@ -1,0 +1,1088 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sistema Óptico Interactivo</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Roboto+Mono:wght@400;500&display=swap" rel="stylesheet">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/js/all.min.js"></script>
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #f8fafc; /* slate-50 */
+        }
+        .matrix-font {
+            font-family: 'Roboto Mono', monospace;
+        }
+        .modal {
+            display: none; /* Hidden by default */
+            position: fixed;
+            z-index: 100;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            overflow: auto;
+            background-color: rgba(0,0,0,0.5); /* Black w/ opacity */
+            align-items: center;
+            justify-content: center;
+        }
+        .modal-content {
+            background-color: #ffffff; /* white */
+            margin: auto;
+            padding: 24px; /* p-6 */
+            border-radius: 8px; /* rounded-lg */
+            box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05); /* shadow-xl */
+            width: 90%;
+            max-width: 500px; /* md:max-w-md */
+        }
+        .input-error {
+            border-color: #ef4444; /* red-500 */
+            box-shadow: 0 0 0 0.2rem rgba(239, 68, 68, 0.25); /* focus:ring-red-500 */
+        }
+        .error-message {
+            color: #ef4444; /* red-500 */
+            font-size: 0.875rem; /* text-sm */
+            margin-top: 0.25rem; /* mt-1 */
+        }
+        /* Custom scrollbar for phase list */
+        .phase-list-container::-webkit-scrollbar {
+            width: 8px;
+        }
+        .phase-list-container::-webkit-scrollbar-track {
+            background: #e2e8f0; /* slate-200 */
+            border-radius: 10px;
+        }
+        .phase-list-container::-webkit-scrollbar-thumb {
+            background: #94a3b8; /* slate-400 */
+            border-radius: 10px;
+        }
+        .phase-list-container::-webkit-scrollbar-thumb:hover {
+            background: #64748b; /* slate-500 */
+        }
+    </style>
+</head>
+<body class="text-slate-800">
+    <div class="container mx-auto p-4 md:p-8 max-w-5xl">
+        <header class="mb-8 text-center">
+            <h1 class="text-3xl md:text-4xl font-bold text-sky-700">Calculadora de Sistemas Ópticos Paraxiales</h1>
+            <p class="text-slate-600 mt-2">Construye y analiza sistemas ópticos paso a paso.</p>
+        </header>
+
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+            <div class="md:col-span-1 bg-white p-6 rounded-xl shadow-lg space-y-4">
+                <h2 class="text-xl font-semibold text-sky-600 border-b pb-2">Controles</h2>
+                <button id="addPhaseBtn" class="w-full bg-sky-600 hover:bg-sky-700 text-white font-semibold py-2 px-4 rounded-lg shadow transition duration-150 ease-in-out flex items-center justify-center">
+                    <i class="fas fa-plus mr-2"></i> Agregar Fase
+                </button>
+                <button id="showPowerCalculatorBtn" class="w-full bg-teal-500 hover:bg-teal-600 text-white font-semibold py-2 px-4 rounded-lg shadow transition duration-150 ease-in-out flex items-center justify-center">
+                    <i class="fas fa-calculator mr-2"></i> Calculadora de Poder
+                </button>
+                 <div class="pt-2">
+                    <label for="showPartialMatrices" class="flex items-center space-x-2 text-sm text-slate-700">
+                        <input type="checkbox" id="showPartialMatrices" class="rounded text-sky-600 focus:ring-sky-500">
+                        <span>Mostrar matrices parciales</span>
+                    </label>
+                </div>
+                <div class="pt-4 space-y-2">
+                     <button id="exportSystemBtn" class="w-full bg-blue-500 hover:bg-blue-600 text-white font-semibold py-2 px-4 rounded-lg shadow transition duration-150 ease-in-out flex items-center justify-center">
+                        <i class="fas fa-file-export mr-2"></i> Exportar Sistema (JSON)
+                    </button>
+                    <label class="w-full bg-green-500 hover:bg-green-600 text-white font-semibold py-2 px-4 rounded-lg shadow transition duration-150 ease-in-out flex items-center justify-center cursor-pointer">
+                        <i class="fas fa-file-import mr-2"></i> Importar Sistema (JSON)
+                        <input type="file" id="importSystemInput" class="hidden" accept=".json">
+                    </label>
+                </div>
+                 <div class="pt-4 border-t mt-4">
+                    <h3 class="text-sm font-semibold text-slate-700 mb-1">Convención de Signos:</h3>
+                    <ul class="list-disc list-inside text-xs text-slate-600 space-y-1">
+                        <li><span class="font-semibold">Superficie (R):</span> R &gt; 0 (convexa, centro a la derecha), R &lt; 0 (cóncava, centro a la izquierda). Para refracción.</li>
+                        <li><span class="font-semibold">Reflexión (R):</span> R &gt; 0 (espejo cóncavo), R &lt; 0 (espejo convexo) - convención común para espejos.</li>
+                        <li><span class="font-semibold">Lente Delgado (f):</span> f &gt; 0 (convergente), f &lt; 0 (divergente).</li>
+                        <li><span class="font-semibold">Traslación (d):</span> d &gt; 0 (avance).</li>
+                    </ul>
+                </div>
+            </div>
+
+            <div class="md:col-span-2 bg-white p-6 rounded-xl shadow-lg">
+                <h2 class="text-xl font-semibold text-sky-600 border-b pb-2 mb-4">Sistema Óptico</h2>
+                
+                <div id="phaseListContainer" class="phase-list-container max-h-96 overflow-y-auto mb-6 pr-2">
+                    <table class="min-w-full divide-y divide-slate-200">
+                        <thead class="bg-slate-50">
+                            <tr>
+                                <th class="px-4 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">#</th>
+                                <th class="px-4 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">Tipo</th>
+                                <th class="px-4 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">Parámetros</th>
+                                <th class="px-4 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">Acciones</th>
+                            </tr>
+                        </thead>
+                        <tbody id="phaseList" class="bg-white divide-y divide-slate-200">
+                            <tr id="noPhasesRow">
+                                <td colspan="4" class="px-4 py-4 text-center text-sm text-slate-500">No hay fases en el sistema.</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+
+                <h3 class="text-lg font-semibold text-sky-600 mt-6 mb-2">Matriz de Transferencia Total (M<sub>total</sub>)</h3>
+                <div id="totalMatrixDisplay" class="matrix-font bg-slate-100 p-4 rounded-lg text-center text-lg shadow-inner">
+                    <pre class="whitespace-pre-wrap">[ 1.0000  0.0000 ]\n[ 0.0000  1.0000 ]</pre>
+                </div>
+
+                <div id="partialMatricesContainer" class="mt-4 hidden">
+                     <h3 class="text-md font-semibold text-sky-500 mb-2">Matrices Parciales:</h3>
+                     <div id="partialMatricesList" class="space-y-2">
+                        </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div id="phaseModal" class="modal">
+        <div class="modal-content">
+            <h3 id="modalTitle" class="text-xl font-semibold mb-6 text-sky-600">Agregar Nueva Fase</h3>
+            <form id="phaseForm">
+                <input type="hidden" id="editingPhaseIndex" value="-1">
+                <div class="mb-4">
+                    <label for="phaseType" class="block text-sm font-medium text-slate-700 mb-1">Tipo de Fase:</label>
+                    <select id="phaseType" name="phaseType" class="w-full p-2 border border-slate-300 rounded-md shadow-sm focus:ring-sky-500 focus:border-sky-500">
+                        <option value="translation">Traslación</option>
+                        <option value="surface">Refracción (Sup. Esférica)</option>
+                        <option value="reflection_surface">Reflexión (Espejo Esf.)</option>
+                        <option value="thin_lens">Lente Delgado</option>
+                        <option value="thick_lens">Lente Grueso</option>
+                    </select>
+                </div>
+
+                <div id="paramsContainer" class="space-y-4">
+                    </div>
+                
+                <div class="mt-8 flex justify-end space-x-3">
+                    <button type="button" id="cancelPhaseBtn" class="px-4 py-2 text-sm font-medium text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-md border border-slate-300">Cancelar</button>
+                    <button type="submit" id="savePhaseBtn" class="px-4 py-2 text-sm font-medium text-white bg-sky-600 hover:bg-sky-700 rounded-md shadow-sm">Guardar Fase</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <div id="powerCalculatorModal" class="modal">
+        <div class="modal-content">
+            <h3 class="text-xl font-semibold mb-6 text-teal-600">Calculadora de Poder Óptico</h3>
+            <form id="powerCalculatorForm">
+                <div class="mb-4">
+                    <label for="powerCalcType" class="block text-sm font-medium text-slate-700 mb-1">Calcular Poder Para:</label>
+                    <select id="powerCalcType" name="powerCalcType" class="w-full p-2 border border-slate-300 rounded-md shadow-sm focus:ring-sky-500 focus:border-sky-500">
+                        <option value="interface">Interfase (Refracción)</option>
+                        <option value="mirror_power">Espejo Esférico</option>
+                        <option value="thin_lens_power">Lente Delgado</option>
+                        <option value="thick_lens_power">Lente Grueso</option>
+                    </select>
+                </div>
+
+                <div id="powerParamsContainer" class="space-y-4">
+                    </div>
+                 <div id="powerResultDisplay" class="mt-6 p-3 bg-teal-50 rounded-md text-teal-700 text-sm matrix-font hidden whitespace-pre-wrap">
+                    </div>
+                <div class="mt-8 flex justify-end">
+                    <button type="button" id="closePowerCalcBtn" class="px-4 py-2 text-sm font-medium text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-md border border-slate-300">Cerrar</button>
+                </div>
+            </form>
+        </div>
+    </div>
+    
+    <div id="customModal" class="modal">
+        <div class="modal-content max-w-sm">
+            <h3 id="customModalTitle" class="text-lg font-semibold mb-3"></h3>
+            <p id="customModalMessage" class="text-sm text-slate-600 mb-5"></p>
+            <div id="customModalButtons" class="flex justify-end space-x-3">
+                </div>
+        </div>
+    </div>
+
+
+<script>
+// --- Funciones de utilidad para matrices (equivalente a numpy) ---
+const matrixUtils = {
+    multiply: function(A, B) {
+        return [
+            [A[0][0]*B[0][0] + A[0][1]*B[1][0], A[0][0]*B[0][1] + A[0][1]*B[1][1]],
+            [A[1][0]*B[0][0] + A[1][1]*B[1][0], A[1][0]*B[0][1] + A[1][1]*B[1][1]]
+        ];
+    },
+    identity: function() {
+        return [[1, 0], [0, 1]];
+    },
+    format: function(matrix, decimals = 4) {
+        if (!matrix || matrix.length !== 2 || matrix[0].length !== 2 || matrix[1].length !== 2) {
+            return "[ Matriz Inválida ]";
+        }
+        return `[ ${parseFloat(matrix[0][0]).toFixed(decimals)}  ${parseFloat(matrix[0][1]).toFixed(decimals)} ]\n[ ${parseFloat(matrix[1][0]).toFixed(decimals)}  ${parseFloat(matrix[1][1]).toFixed(decimals)} ]`;
+    }
+};
+
+// --- Lógica de Matrices Ópticas ---
+const opticalMatrices = {
+    translation: function(d, n = 1.0) {
+        if (n <= 0) throw new Error("Índice 'n' debe ser > 0.");
+        return [[1, 0], [d/n, 1]];
+    },
+    surface: function(R, n1, n2) { // Refracción
+        if (R === 0) throw new Error("Radio 'R' no puede ser cero para superficie esférica de refracción.");
+        if (n1 <= 0 || n2 <= 0) throw new Error("Índices 'n1' y 'n2' deben ser > 0.");
+        const m21 = (n1 - n2) / (R * n2);
+        return [[1, 0], [m21, 1]];
+    },
+    reflectionSurface: function(R_mirror, n_medium = 1.0) { // Reflexión
+        // Convención para espejos: R > 0 cóncavo, R < 0 convexo.
+        // Matriz de reflexión: [[1, 0], [-2n/R_mirror, -1]] si R es el radio del espejo y n el del medio.
+        // O, si se usa la convención de R como en refracción (R>0 centro a la derecha):
+        // M = [[1,0], [-2/R, -1]] para un espejo en aire (n=1).
+        // Si n_medium es el índice del medio donde está el espejo:
+        // El poder de un espejo es P = -2n/R_mirror (si R_mirror > 0 es cóncavo)
+        // O P = -2/R si R es el radio de curvatura del frente de onda y n=1.
+        // La matriz es [[1,0],[P_elemento, 1]] para refracción, pero [[1,0],[P_elemento, -1]] para reflexión.
+        // Usando P_espejo = -2*n_medium / R_mirror (donde R_mirror > 0 es cóncavo)
+        // El elemento m21 de la matriz de reflexión es P_espejo.
+        // La matriz es [[1, 0], [-2*n_medium/R_mirror, -1]]
+        // Sin embargo, la especificación original usaba (n1-n2)/(R*n2) y n1/n2.
+        // Si n2 = -n1 (para reflexión), entonces (n1 - (-n1))/(R*(-n1)) = 2n1 / (-R*n1) = -2/R.
+        // Y n1/n2 = n1/(-n1) = -1.
+        // Esta es la forma más consistente: M_reflection = [[1, 0], [-2/R_surface, -1]]
+        // donde R_surface es el radio de la superficie (R>0 centro a la derecha).
+        // El índice n_medium no entra en esta formulación simplificada de la matriz,
+        // pero es importante para la distancia reducida d/n en traslaciones.
+        if (R_mirror === 0) throw new Error("Radio 'R' no puede ser cero para espejo esférico.");
+        // n_medium es relevante si se considera el poder, pero la matriz básica de reflexión no lo incluye directamente así.
+        // La matriz es [[1, 0], [-2/R, -1]] asumiendo que R es el radio de curvatura de la superficie.
+        return [[1, 0], [-2 / R_mirror, -1]];
+    },
+    thinLens: function({f, P}) {
+        let m21;
+        if (P !== undefined && P !== null) {
+            const power_mm_inv = P / 1000.0; 
+            m21 = -power_mm_inv;
+        } else if (f !== undefined && f !== null) {
+            if (f === 0) throw new Error("Distancia focal 'f' no puede ser cero.");
+            m21 = -1 / f;
+        } else {
+            throw new Error("Debe proveer 'f' o 'P' para lente delgada.");
+        }
+        return [[1, 0], [m21, 1]];
+    },
+    thickLens: function(R1, n_inc, n_lente, d_lente, R2, n_salida) {
+        if (d_lente < 0) throw new Error("Espesor 'd_lente' no puede ser negativo.");
+        if (n_lente <=0) throw new Error("Índice 'n_lente' debe ser > 0.");
+
+        const M_sup1 = this.surface(R1, n_inc, n_lente); // Refracción
+        const M_tras = this.translation(d_lente, n_lente);
+        const M_sup2 = this.surface(R2, n_lente, n_salida); // Refracción
+        
+        let M_temp = matrixUtils.multiply(M_tras, M_sup1);
+        return matrixUtils.multiply(M_sup2, M_temp);
+    }
+};
+
+// --- Calculadora de Poder Óptico ---
+const powerCalculator = {
+    interfacePower: function(R, n1, n2) { // R en mm, para refracción
+        if (R === 0) throw new Error("Radio 'R' no puede ser cero.");
+        if (n1 <= 0 || n2 <= 0) throw new Error("Índices 'n1', 'n2' deben ser > 0.");
+        const R_m = R / 1000.0; 
+        return (n2 - n1) / R_m; // Dioptrías
+    },
+    mirrorPower: function(R_mirror, n_medium = 1.0) { // R_mirror en mm
+        // Convención común para espejos: R > 0 cóncavo, R < 0 convexo.
+        // Poder P = -2n / R_mirror (si R_mirror es el radio del espejo)
+        // O P = -2 / R_m (si R_m es el radio de curvatura de la superficie en metros, n=1)
+        if (R_mirror === 0) throw new Error("Radio 'R' del espejo no puede ser cero.");
+        if (n_medium <= 0) throw new Error("Índice 'n_medium' debe ser > 0.");
+        const R_mirror_m = R_mirror / 1000.0;
+        // Usando la convención de R > 0 para cóncavo (f=-R/2n), P = -2n/R
+        // Si R es el radio de curvatura de la superficie (R>0 centro a la derecha),
+        // un espejo cóncavo tiene R < 0. P = -2n/R.
+        // Para mantener consistencia con la matriz de reflexión [[1,0],[-2/R_surface,-1]],
+        // el poder asociado a ese elemento es -2/R_surface (en 1/mm).
+        // En dioptrías (1/m): -2/(R_surface/1000) = -2000/R_surface.
+        // Esta es la potencia si n=1. Si está en un medio n: P = -2n / R_surface_metros
+        return (-2 * n_medium) / R_mirror_m; // Dioptrías
+    },
+    thinLensPower: function(f) { // f en mm
+        if (f === 0) throw new Error("Focal 'f' no puede ser cero.");
+        const f_m = f / 1000.0; 
+        return 1 / f_m; // Dioptrías
+    },
+    thickLensPower: function(R1, n_aire, n_vidrio, d_lente, R2) { // Distancias en mm
+        if (n_vidrio <= 0) throw new Error("Índice 'n_vidrio' debe ser > 0.");
+        if (d_lente < 0) throw new Error("Espesor 'd_lente' debe ser >= 0.");
+
+        const P1 = this.interfacePower(R1, n_aire, n_vidrio);
+        const P2 = this.interfacePower(R2, n_vidrio, n_aire);
+        const d_lente_m = d_lente / 1000.0;
+
+        const P_total = P1 + P2 - (d_lente_m / n_vidrio) * P1 * P2;
+        return { P1, P2, P_total };
+    }
+};
+
+
+// --- Estado de la Aplicación ---
+let opticalSystem = []; 
+let editingPhaseIndex = -1; 
+
+// --- Elementos del DOM ---
+const addPhaseBtn = document.getElementById('addPhaseBtn');
+const phaseModal = document.getElementById('phaseModal');
+const modalTitle = document.getElementById('modalTitle');
+const phaseForm = document.getElementById('phaseForm');
+const phaseTypeSelect = document.getElementById('phaseType');
+const paramsContainer = document.getElementById('paramsContainer');
+const cancelPhaseBtn = document.getElementById('cancelPhaseBtn');
+const phaseListTableBody = document.getElementById('phaseList');
+const totalMatrixDisplay = document.getElementById('totalMatrixDisplay');
+const noPhasesRow = document.getElementById('noPhasesRow');
+const showPartialMatricesCheckbox = document.getElementById('showPartialMatrices');
+const partialMatricesContainer = document.getElementById('partialMatricesContainer');
+const partialMatricesListDiv = document.getElementById('partialMatricesList');
+
+const powerCalculatorModal = document.getElementById('powerCalculatorModal');
+const showPowerCalculatorBtn = document.getElementById('showPowerCalculatorBtn');
+const closePowerCalcBtn = document.getElementById('closePowerCalcBtn');
+const powerCalcTypeSelect = document.getElementById('powerCalcType');
+const powerParamsContainer = document.getElementById('powerParamsContainer');
+const powerResultDisplay = document.getElementById('powerResultDisplay');
+
+const exportSystemBtn = document.getElementById('exportSystemBtn');
+const importSystemInput = document.getElementById('importSystemInput');
+
+const customModal = document.getElementById('customModal');
+const customModalTitle = document.getElementById('customModalTitle');
+const customModalMessage = document.getElementById('customModalMessage');
+const customModalButtons = document.getElementById('customModalButtons');
+
+// --- Funciones de la Interfaz (Modales) ---
+function showModal(type, title, message, buttonsConfig) {
+    customModalTitle.textContent = title;
+    customModalMessage.textContent = message;
+    customModalButtons.innerHTML = ''; // Clear previous buttons
+
+    buttonsConfig.forEach(btnConfig => {
+        const button = document.createElement('button');
+        button.textContent = btnConfig.text;
+        button.classList.add('px-4', 'py-2', 'text-sm', 'font-medium', 'rounded-md');
+        if (btnConfig.classes) {
+            button.classList.add(...btnConfig.classes.split(' '));
+        } else {
+            button.classList.add('bg-slate-200', 'hover:bg-slate-300', 'text-slate-800'); // Default
+        }
+        button.addEventListener('click', () => {
+            customModal.style.display = 'none';
+            if (btnConfig.onClick) {
+                btnConfig.onClick();
+            }
+        });
+        customModalButtons.appendChild(button);
+    });
+    customModal.style.display = 'flex';
+}
+
+function showAlert(title, message) {
+    showModal('alert', title, message, [
+        { text: 'OK', classes: 'bg-sky-600 hover:bg-sky-700 text-white' }
+    ]);
+}
+
+function showConfirm(title, message, onConfirm) {
+    showModal('confirm', title, message, [
+        { text: 'Cancelar', classes: 'bg-slate-200 hover:bg-slate-300 text-slate-800 border' },
+        { text: 'Confirmar', classes: 'bg-red-500 hover:bg-red-600 text-white', onClick: onConfirm }
+    ]);
+}
+
+
+function openPhaseModal(index = -1) {
+    editingPhaseIndex = index;
+    phaseForm.reset();
+    removeValidationErrors(phaseForm);
+
+    if (index === -1) { 
+        modalTitle.textContent = 'Agregar Nueva Fase';
+        document.getElementById('editingPhaseIndex').value = -1;
+        phaseTypeSelect.disabled = false;
+        updateParamsForm(phaseTypeSelect.value);
+    } else { 
+        modalTitle.textContent = 'Editar Fase';
+        document.getElementById('editingPhaseIndex').value = index;
+        const phase = opticalSystem[index];
+        phaseTypeSelect.value = phase.type;
+        phaseTypeSelect.disabled = true; 
+        updateParamsForm(phase.type, phase.params);
+    }
+    phaseModal.style.display = 'flex';
+}
+
+function closePhaseModal() {
+    phaseModal.style.display = 'none';
+    removeValidationErrors(phaseForm);
+}
+
+function createInputField(id, label, type = 'number', value = '', placeholder = '', required = true, step = 'any') {
+    const existingError = document.getElementById(`${id}-error`);
+    if (existingError) existingError.remove();
+
+    const div = document.createElement('div');
+    div.classList.add('mb-3');
+    
+    const labelEl = document.createElement('label');
+    labelEl.htmlFor = id;
+    labelEl.textContent = label;
+    labelEl.classList.add('block', 'text-sm', 'font-medium', 'text-slate-600', 'mb-1');
+    
+    const inputEl = document.createElement('input');
+    inputEl.type = type;
+    inputEl.id = id;
+    inputEl.name = id;
+    inputEl.value = value;
+    inputEl.placeholder = placeholder;
+    if (required) inputEl.required = true;
+    if (type === 'number') inputEl.step = step;
+    inputEl.classList.add('w-full', 'p-2', 'border', 'border-slate-300', 'rounded-md', 'shadow-sm', 'focus:ring-sky-500', 'focus:border-sky-500');
+    
+    div.appendChild(labelEl);
+    div.appendChild(inputEl);
+    return div;
+}
+
+function createCheckboxField(id, label, checked = false) {
+    const div = document.createElement('div');
+    div.classList.add('flex', 'items-center', 'mb-3');
+    
+    const inputEl = document.createElement('input');
+    inputEl.type = 'checkbox';
+    inputEl.id = id;
+    inputEl.name = id;
+    inputEl.checked = checked;
+    inputEl.classList.add('h-4', 'w-4', 'text-sky-600', 'border-slate-300', 'rounded', 'focus:ring-sky-500');
+    
+    const labelEl = document.createElement('label');
+    labelEl.htmlFor = id;
+    labelEl.textContent = label;
+    labelEl.classList.add('ml-2', 'block', 'text-sm', 'text-slate-700');
+    
+    div.appendChild(inputEl);
+    div.appendChild(labelEl);
+    return div;
+}
+
+
+function updateParamsForm(type, params = {}) {
+    paramsContainer.innerHTML = ''; 
+    let fields = [];
+
+    switch (type) {
+        case 'translation':
+            fields.push(createInputField('d', 'Distancia d (mm):', 'number', params.d || '', 'ej: 50'));
+            fields.push(createInputField('n_trans', 'Índice n (medio):', 'number', params.n_trans || '1.0', 'ej: 1.0', true, '0.001'));
+            break;
+        case 'thin_lens':
+            const usePower = params.P !== undefined && params.P !== null;
+            fields.push(createCheckboxField('use_power', 'Usar Potencia (D) en lugar de f', usePower));
+            fields.push(createInputField('f', 'Distancia Focal f (mm):', 'number', params.f || '', 'ej: 100 (positivo convergente)', !usePower));
+            fields.push(createInputField('P', 'Potencia P (Dioptrías):', 'number', params.P || '', 'ej: 10', usePower));
+            
+            const usePowerCheckbox = fields[0].querySelector('#use_power');
+            const fInput = fields[1].querySelector('#f');
+            const pInput = fields[2].querySelector('#P');
+            
+            function toggleLensInputs() {
+                if (usePowerCheckbox.checked) {
+                    fInput.disabled = true; fInput.required = false; fInput.value = '';
+                    pInput.disabled = false; pInput.required = true;
+                } else {
+                    fInput.disabled = false; fInput.required = true;
+                    pInput.disabled = true; pInput.required = false; pInput.value = '';
+                }
+            }
+            usePowerCheckbox.addEventListener('change', toggleLensInputs);
+            setTimeout(toggleLensInputs,0); 
+            break;
+        case 'surface': // Refracción
+            fields.push(createInputField('R_surf', 'Radio de Curvatura R (mm):', 'number', params.R_surf || '', 'ej: 100 (positivo convexo)'));
+            fields.push(createInputField('n1_surf', 'Índice Incidente n₁:', 'number', params.n1_surf || '1.0', 'ej: 1.0', true, '0.001'));
+            fields.push(createInputField('n2_surf', 'Índice Transmitido n₂:', 'number', params.n2_surf || '1.5', 'ej: 1.5', true, '0.001'));
+            break;
+        case 'reflection_surface': // Reflexión
+            fields.push(createInputField('R_reflect', 'Radio Curvatura Espejo R (mm):', 'number', params.R_reflect || '', 'ej: 200 (R>0 cóncavo)'));
+            // n_medium is not directly in the matrix [[1,0],[-2/R, -1]] but good for consistency if we extend.
+            // For now, the matrix form used does not require n_medium directly.
+            // fields.push(createInputField('n_medium_reflect', 'Índice del Medio n:', 'number', params.n_medium_reflect || '1.0', 'ej: 1.0', true, '0.001'));
+            break;
+        case 'thick_lens': 
+            fields.push(createInputField('R1_thick', 'Radio Superficie Frontal R₁ (mm):', 'number', params.R1_thick || '', 'ej: 100'));
+            fields.push(createInputField('n_inc_thick', 'Índice Incidente n_inc:', 'number', params.n_inc_thick || '1.0', 'ej: 1.0', true, '0.001'));
+            fields.push(createInputField('n_lente_thick', 'Índice de la Lente n_lente:', 'number', params.n_lente_thick || '1.5', 'ej: 1.5', true, '0.001'));
+            fields.push(createInputField('d_lente_thick', 'Espesor Lente d_lente (mm):', 'number', params.d_lente_thick || '', 'ej: 5'));
+            fields.push(createInputField('R2_thick', 'Radio Superficie Posterior R₂ (mm):', 'number', params.R2_thick || '', 'ej: -100'));
+            fields.push(createInputField('n_salida_thick', 'Índice de Salida n_salida:', 'number', params.n_salida_thick || '1.0', 'ej: 1.0', true, '0.001'));
+            break;
+    }
+    fields.forEach(field => paramsContainer.appendChild(field));
+}
+
+function validateAndGetParams() {
+    const type = phaseTypeSelect.value;
+    const params = {};
+    let isValid = true;
+    removeValidationErrors(phaseForm);
+
+    function getValidatedFloat(id, fieldName, allowNullOrZero = false, allowNegative = true) {
+        const inputElement = document.getElementById(id);
+        if (!inputElement || inputElement.disabled) { 
+             if (inputElement && inputElement.required) { 
+                showFieldError(inputElement, `${fieldName} es requerido pero está deshabilitado.`);
+                isValid = false;
+             }
+            return null;
+        }
+
+        const valueStr = inputElement.value.trim();
+        if (valueStr === '') {
+            if (inputElement.required) {
+                showFieldError(inputElement, `${fieldName} es requerido.`);
+                isValid = false;
+            }
+            return null;
+        }
+        const value = parseFloat(valueStr);
+        if (isNaN(value)) {
+            showFieldError(inputElement, `${fieldName} debe ser un número.`);
+            isValid = false;
+            return null;
+        }
+        if (!allowNullOrZero && value === 0) {
+            showFieldError(inputElement, `${fieldName} no puede ser cero.`);
+            isValid = false;
+        }
+        if (!allowNegative && value < 0) {
+             showFieldError(inputElement, `${fieldName} no puede ser negativo.`);
+             isValid = false;
+        }
+        if (id.startsWith('n_') || id.includes('n1_') || id.includes('n2_') || id.includes('n_inc') || id.includes('n_lente') || id.includes('n_salida')) {
+            if (value <= 0) {
+                showFieldError(inputElement, `${fieldName} (índice) debe ser mayor que 0.`);
+                isValid = false;
+            }
+        }
+        return value;
+    }
+
+    switch (type) {
+        case 'translation':
+            params.d = getValidatedFloat('d', 'Distancia d', true, true); 
+            params.n_trans = getValidatedFloat('n_trans', 'Índice n', false, false); 
+            break;
+        case 'thin_lens':
+            const usePower = document.getElementById('use_power').checked;
+            if (usePower) {
+                params.P = getValidatedFloat('P', 'Potencia P', true, true); 
+                if (params.P === null && document.getElementById('P').required) isValid = false;
+            } else {
+                params.f = getValidatedFloat('f', 'Distancia Focal f', false, true); 
+                 if (params.f === null && document.getElementById('f').required) isValid = false;
+            }
+            break;
+        case 'surface': // Refracción
+            params.R_surf = getValidatedFloat('R_surf', 'Radio R', false, true); 
+            params.n1_surf = getValidatedFloat('n1_surf', 'Índice n₁', false, false); 
+            params.n2_surf = getValidatedFloat('n2_surf', 'Índice n₂', false, false); 
+            break;
+        case 'reflection_surface': // Reflexión
+            params.R_reflect = getValidatedFloat('R_reflect', 'Radio Espejo R', false, true);
+            // params.n_medium_reflect = getValidatedFloat('n_medium_reflect', 'Índice Medio n', false, false);
+            break;
+        case 'thick_lens':
+            params.R1_thick = getValidatedFloat('R1_thick', 'Radio R₁', false, true);
+            params.n_inc_thick = getValidatedFloat('n_inc_thick', 'Índice n_inc', false, false);
+            params.n_lente_thick = getValidatedFloat('n_lente_thick', 'Índice n_lente', false, false);
+            params.d_lente_thick = getValidatedFloat('d_lente_thick', 'Espesor d_lente', true, false); 
+            params.R2_thick = getValidatedFloat('R2_thick', 'Radio R₂', false, true);
+            params.n_salida_thick = getValidatedFloat('n_salida_thick', 'Índice n_salida', false, false);
+            if (params.d_lente_thick < 0 && params.d_lente_thick !== null) { 
+                showFieldError(document.getElementById('d_lente_thick'), `Espesor d_lente no puede ser negativo.`);
+                isValid = false;
+            }
+            break;
+    }
+    return isValid ? params : null;
+}
+
+
+function showFieldError(inputElement, message) {
+    inputElement.classList.add('input-error');
+    let errorDiv = document.getElementById(`${inputElement.id}-error`);
+    if (!errorDiv) {
+        errorDiv = document.createElement('div');
+        errorDiv.id = `${inputElement.id}-error`;
+        errorDiv.classList.add('error-message');
+        inputElement.parentNode.appendChild(errorDiv);
+    }
+    errorDiv.textContent = message;
+}
+
+function removeValidationErrors(form) {
+    form.querySelectorAll('.input-error').forEach(el => el.classList.remove('input-error'));
+    form.querySelectorAll('.error-message').forEach(el => el.remove());
+}
+
+
+function renderPhaseList() {
+    phaseListTableBody.innerHTML = ''; 
+    if (opticalSystem.length === 0) {
+        phaseListTableBody.appendChild(noPhasesRow);
+        noPhasesRow.style.display = 'table-row';
+    } else {
+        noPhasesRow.style.display = 'none';
+        opticalSystem.forEach((phase, index) => {
+            const row = phaseListTableBody.insertRow();
+            row.insertCell().textContent = index + 1;
+            
+            let typeText = '';
+            switch(phase.type) {
+                case 'translation': typeText = 'Traslación'; break;
+                case 'thin_lens': typeText = 'Lente Delgado'; break;
+                case 'surface': typeText = 'Refracción Sup.'; break;
+                case 'reflection_surface': typeText = 'Reflexión Esp.'; break;
+                case 'thick_lens': typeText = 'Lente Grueso'; break;
+            }
+            row.insertCell().textContent = typeText;
+
+            let paramsText = '';
+            if (phase.type === 'translation') {
+                paramsText = `d=${phase.params.d}mm, n=${phase.params.n_trans}`;
+            } else if (phase.type === 'thin_lens') {
+                if (phase.params.f !== undefined && phase.params.f !== null) {
+                    paramsText = `f=${phase.params.f > 0 ? '+' : ''}${phase.params.f}mm`;
+                } else if (phase.params.P !== undefined && phase.params.P !== null) {
+                     paramsText = `P=${phase.params.P > 0 ? '+' : ''}${phase.params.P}D`;
+                }
+            } else if (phase.type === 'surface') {
+                paramsText = `R=${phase.params.R_surf > 0 ? '+' : ''}${phase.params.R_surf}mm, n₁=${phase.params.n1_surf}→n₂=${phase.params.n2_surf}`;
+            } else if (phase.type === 'reflection_surface') {
+                paramsText = `R_espejo=${phase.params.R_reflect > 0 ? '+' : ''}${phase.params.R_reflect}mm`;
+            } else if (phase.type === 'thick_lens') {
+                paramsText = `R₁=${phase.params.R1_thick}, n_inc=${phase.params.n_inc_thick}→n_l=${phase.params.n_lente_thick}, d=${phase.params.d_lente_thick}, R₂=${phase.params.R2_thick}, n_l=${phase.params.n_lente_thick}→n_s=${phase.params.n_salida_thick}`;
+                paramsText = paramsText.substring(0, 60) + (paramsText.length > 60 ? "..." : ""); // Shorten for display
+            }
+            row.insertCell().textContent = paramsText;
+
+            const actionsCell = row.insertCell();
+            actionsCell.classList.add('space-x-2', 'whitespace-nowrap', 'px-4', 'py-2');
+            const editBtn = document.createElement('button');
+            editBtn.innerHTML = '<i class="fas fa-pencil-alt text-sky-600 hover:text-sky-800"></i>';
+            editBtn.title = "Editar Fase";
+            editBtn.classList.add('transition', 'duration-150');
+            editBtn.onclick = () => openPhaseModal(index);
+            
+            const deleteBtn = document.createElement('button');
+            deleteBtn.innerHTML = '<i class="fas fa-times-circle text-red-500 hover:text-red-700"></i>';
+            deleteBtn.title = "Eliminar Fase";
+            deleteBtn.classList.add('transition', 'duration-150');
+            deleteBtn.onclick = () => {
+                showConfirm('Eliminar Fase', '¿Seguro que quieres eliminar esta fase?', () => {
+                    opticalSystem.splice(index, 1);
+                    renderSystem();
+                });
+            };
+            actionsCell.appendChild(editBtn);
+            actionsCell.appendChild(deleteBtn);
+        });
+    }
+}
+
+function calculateAndDisplayMatrices() {
+    let totalMatrix = matrixUtils.identity();
+
+    if (opticalSystem.length === 0) {
+        totalMatrixDisplay.querySelector('pre').textContent = matrixUtils.format(totalMatrix);
+        partialMatricesListDiv.innerHTML = '<p class="text-sm text-slate-500">No hay fases para mostrar matrices parciales.</p>';
+        partialMatricesContainer.style.display = showPartialMatricesCheckbox.checked ? 'block' : 'none';
+        return;
+    }
+
+    try {
+        // Pre-calculate all phase matrices and store them
+        opticalSystem.forEach(phase => {
+            switch (phase.type) {
+                case 'translation':
+                    phase.matrix = opticalMatrices.translation(phase.params.d, phase.params.n_trans);
+                    break;
+                case 'thin_lens':
+                    phase.matrix = opticalMatrices.thinLens({f: phase.params.f, P: phase.params.P});
+                    break;
+                case 'surface': // Refracción
+                    phase.matrix = opticalMatrices.surface(phase.params.R_surf, phase.params.n1_surf, phase.params.n2_surf);
+                    break;
+                case 'reflection_surface': // Reflexión
+                    phase.matrix = opticalMatrices.reflectionSurface(phase.params.R_reflect /*, phase.params.n_medium_reflect */);
+                    break;
+                case 'thick_lens':
+                    phase.matrix = opticalMatrices.thickLens(
+                        phase.params.R1_thick, phase.params.n_inc_thick, phase.params.n_lente_thick,
+                        phase.params.d_lente_thick, phase.params.R2_thick, phase.params.n_salida_thick
+                    );
+                    break;
+                default:
+                    phase.matrix = matrixUtils.identity(); 
+            }
+        });
+
+        // Calculate total matrix: M_total = M_k @ M_k-1 @ ... @ M_1
+        if (opticalSystem.length > 0) {
+            totalMatrix = opticalSystem[0].matrix; // M1
+            for (let i = 1; i < opticalSystem.length; i++) {
+                // Current phase is opticalSystem[i].matrix (this is M_i+1)
+                // Total matrix so far is M_i @ ... @ M_1
+                // New total = (M_i+1) @ (M_i @ ... @ M_1)
+                totalMatrix = matrixUtils.multiply(opticalSystem[i].matrix, totalMatrix);
+            }
+        } else {
+            totalMatrix = matrixUtils.identity();
+        }
+
+        totalMatrixDisplay.querySelector('pre').textContent = matrixUtils.format(totalMatrix);
+
+        partialMatricesListDiv.innerHTML = '';
+        if (showPartialMatricesCheckbox.checked && opticalSystem.length > 0) {
+            partialMatricesContainer.style.display = 'block';
+            opticalSystem.forEach((phase, index) => {
+                const div = document.createElement('div');
+                div.classList.add('p-2', 'bg-slate-50', 'rounded', 'text-sm', 'matrix-font');
+                // Safely access table cell content for phase name and params
+                const tableRow = phaseListTableBody.rows[index];
+                const phaseName = tableRow?.cells[1]?.textContent || `Fase ${index + 1}`;
+                const paramsText = tableRow?.cells[2]?.textContent || `Parámetros no disponibles`;
+
+                div.innerHTML = `
+                    <p class="font-semibold text-slate-700">Matriz Fase ${index + 1} (${phaseName}): ${paramsText}</p>
+                    <pre class="whitespace-pre-wrap">${matrixUtils.format(phase.matrix)}</pre>
+                `;
+                partialMatricesListDiv.appendChild(div);
+            });
+        } else {
+            partialMatricesContainer.style.display = 'none';
+        }
+
+    } catch (error) {
+        console.error("Error calculating matrix:", error);
+        showAlert('Error de Cálculo', `Error al calcular matriz: ${error.message}`);
+        totalMatrixDisplay.querySelector('pre').textContent = "[ ERROR EN CÁLCULO ]";
+        partialMatricesContainer.style.display = 'none';
+    }
+}
+
+function renderSystem() {
+    renderPhaseList(); // Must be called first to populate table for matrix display
+    calculateAndDisplayMatrices();
+}
+
+// --- Event Listeners ---
+addPhaseBtn.addEventListener('click', () => openPhaseModal());
+cancelPhaseBtn.addEventListener('click', closePhaseModal);
+phaseTypeSelect.addEventListener('change', (e) => updateParamsForm(e.target.value));
+
+phaseForm.addEventListener('submit', function(event) {
+    event.preventDefault();
+    const params = validateAndGetParams();
+    if (!params) {
+        return; 
+    }
+
+    const type = phaseTypeSelect.value;
+    const currentEditingIndex = parseInt(document.getElementById('editingPhaseIndex').value, 10);
+    const phaseData = { type, params };
+
+    try {
+        let testMatrix;
+         switch (type) {
+            case 'translation':
+                testMatrix = opticalMatrices.translation(params.d, params.n_trans);
+                break;
+            case 'thin_lens':
+                testMatrix = opticalMatrices.thinLens({f: params.f, P: params.P});
+                break;
+            case 'surface':
+                testMatrix = opticalMatrices.surface(params.R_surf, params.n1_surf, params.n2_surf);
+                break;
+            case 'reflection_surface':
+                testMatrix = opticalMatrices.reflectionSurface(params.R_reflect /*, params.n_medium_reflect*/);
+                break;
+            case 'thick_lens':
+                 testMatrix = opticalMatrices.thickLens(
+                    params.R1_thick, params.n_inc_thick, params.n_lente_thick,
+                    params.d_lente_thick, params.R2_thick, params.n_salida_thick
+                );
+                break;
+            default: throw new Error("Tipo de fase desconocido para prueba de matriz.");
+        }
+        phaseData.matrix = testMatrix; 
+    } catch (e) {
+        showAlert('Error en Parámetros', `No se pudo generar la matriz para la fase: ${e.message}. Revisa los valores.`);
+        return;
+    }
+
+    if (currentEditingIndex === -1) { 
+        opticalSystem.push(phaseData);
+    } else { 
+        opticalSystem[currentEditingIndex] = phaseData;
+    }
+    
+    renderSystem();
+    closePhaseModal();
+});
+
+showPartialMatricesCheckbox.addEventListener('change', renderSystem);
+
+
+// --- Calculadora de Poder Lógica ---
+function openPowerCalculatorModal() {
+    powerCalculatorModal.style.display = 'flex';
+    powerResultDisplay.classList.add('hidden');
+    powerResultDisplay.textContent = '';
+    updatePowerCalculatorForm(powerCalcTypeSelect.value);
+}
+
+function closePowerCalculatorModal() {
+    powerCalculatorModal.style.display = 'none';
+}
+
+function updatePowerCalculatorForm(type, params = {}) {
+    powerParamsContainer.innerHTML = '';
+    let fields = [];
+    removeValidationErrors(document.getElementById('powerCalculatorForm'));
+    powerResultDisplay.classList.add('hidden');
+    powerResultDisplay.textContent = '';
+
+    switch(type) {
+        case 'interface': // Refracción
+            fields.push(createInputField('power_R_surf', 'Radio R (mm):', 'number', params.R_surf || '', 'ej: 100'));
+            fields.push(createInputField('power_n1_surf', 'Índice n₁:', 'number', params.n1_surf || '1.0', 'ej: 1.0', true, '0.001'));
+            fields.push(createInputField('power_n2_surf', 'Índice n₂:', 'number', params.n2_surf || '1.5', 'ej: 1.5', true, '0.001'));
+            break;
+        case 'mirror_power': // Reflexión
+            fields.push(createInputField('power_R_mirror', 'Radio Espejo R (mm):', 'number', params.R_mirror || '', 'ej: 200 (R>0 cóncavo)'));
+            fields.push(createInputField('power_n_medium_mirror', 'Índice del Medio n:', 'number', params.n_medium_mirror || '1.0', 'ej: 1.0', true, '0.001'));
+            break;
+        case 'thin_lens_power':
+            fields.push(createInputField('power_f_tl', 'Distancia Focal f (mm):', 'number', params.f_tl || '', 'ej: 100'));
+            break;
+        case 'thick_lens_power':
+            fields.push(createInputField('power_R1_thick_p', 'Radio R₁ (mm):', 'number', params.R1_thick_p || '', 'ej: 100'));
+            fields.push(createInputField('power_n_aire_thick_p', 'Índice Aire/Incidente n_aire:', 'number', params.n_aire_thick_p || '1.0', 'ej: 1.0', true, '0.001'));
+            fields.push(createInputField('power_n_vidrio_thick_p', 'Índice Vidrio n_vidrio:', 'number', params.n_vidrio_thick_p || '1.5', 'ej: 1.5', true, '0.001'));
+            fields.push(createInputField('power_d_lente_thick_p', 'Espesor d (mm):', 'number', params.d_lente_thick_p || '', 'ej: 5'));
+            fields.push(createInputField('power_R2_thick_p', 'Radio R₂ (mm):', 'number', params.R2_thick_p || '', 'ej: -100'));
+            break;
+    }
+    
+    const calculateBtn = document.createElement('button');
+    calculateBtn.type = 'button';
+    calculateBtn.textContent = 'Calcular Poder';
+    calculateBtn.classList.add('w-full', 'mt-4', 'bg-teal-500', 'hover:bg-teal-600', 'text-white', 'font-semibold', 'py-2', 'px-4', 'rounded-lg', 'shadow');
+    calculateBtn.onclick = handlePowerCalculation;
+    
+    fields.forEach(field => powerParamsContainer.appendChild(field));
+    powerParamsContainer.appendChild(calculateBtn);
+}
+
+function handlePowerCalculation() {
+    const type = powerCalcTypeSelect.value;
+    let resultText = '';
+    let valid = true;
+    removeValidationErrors(document.getElementById('powerCalculatorForm'));
+    powerResultDisplay.classList.remove('text-red-700', 'bg-red-50'); // Reset error style
+    powerResultDisplay.classList.add('text-teal-700', 'bg-teal-50'); // Default style
+
+
+    function getPowerValidatedFloat(id, fieldName, allowNullOrZero = false, allowNegative = true) {
+        const inputElement = document.getElementById(id);
+         if (!inputElement) return null; 
+        const valueStr = inputElement.value.trim();
+        if (valueStr === '') {
+            showFieldError(inputElement, `${fieldName} es requerido.`);
+            valid = false; return null;
+        }
+        const value = parseFloat(valueStr);
+        if (isNaN(value)) {
+            showFieldError(inputElement, `${fieldName} debe ser un número.`);
+            valid = false; return null;
+        }
+        if (!allowNullOrZero && value === 0) {
+            showFieldError(inputElement, `${fieldName} no puede ser cero.`);
+            valid = false;
+        }
+        if (!allowNegative && value < 0) {
+             showFieldError(inputElement, `${fieldName} no puede ser negativo.`);
+             valid = false;
+        }
+        if (id.startsWith('power_n')) { 
+            if (value <= 0) {
+                showFieldError(inputElement, `${fieldName} (índice) debe ser > 0.`);
+                valid = false;
+            }
+        }
+        return value;
+    }
+
+    try {
+        switch(type) {
+            case 'interface':
+                const R_int = getPowerValidatedFloat('power_R_surf', 'Radio R', false);
+                const n1_int = getPowerValidatedFloat('power_n1_surf', 'Índice n₁', false, false);
+                const n2_int = getPowerValidatedFloat('power_n2_surf', 'Índice n₂', false, false);
+                if (valid) {
+                    const P = powerCalculator.interfacePower(R_int, n1_int, n2_int);
+                    resultText = `Poder de Interfase (Refracción):\n${P.toFixed(2)} D`;
+                }
+                break;
+            case 'mirror_power':
+                const R_mir = getPowerValidatedFloat('power_R_mirror', 'Radio Espejo R', false);
+                const n_med_mir = getPowerValidatedFloat('power_n_medium_mirror', 'Índice Medio n', false, false);
+                if (valid) {
+                    const P = powerCalculator.mirrorPower(R_mir, n_med_mir);
+                    resultText = `Poder del Espejo Esférico:\n${P.toFixed(2)} D (R=${R_mir}mm, n=${n_med_mir})`;
+                }
+                break;
+            case 'thin_lens_power':
+                const f_tl = getPowerValidatedFloat('power_f_tl', 'Focal f', false);
+                if (valid) {
+                    const P = powerCalculator.thinLensPower(f_tl);
+                    resultText = `Poder Lente Delgado:\n${P.toFixed(2)} D`;
+                }
+                break;
+            case 'thick_lens_power':
+                const R1_thick_p = getPowerValidatedFloat('power_R1_thick_p', 'Radio R₁', false);
+                const n_aire_p = getPowerValidatedFloat('power_n_aire_thick_p', 'Índice Aire', false, false);
+                const n_vidrio_p = getPowerValidatedFloat('power_n_vidrio_thick_p', 'Índice Vidrio', false, false);
+                const d_lente_p = getPowerValidatedFloat('power_d_lente_thick_p', 'Espesor d', true, false); 
+                const R2_thick_p = getPowerValidatedFloat('power_R2_thick_p', 'Radio R₂', false);
+                 if (d_lente_p < 0 && d_lente_p !== null) {
+                    showFieldError(document.getElementById('power_d_lente_thick_p'), `Espesor d no puede ser negativo.`);
+                    valid = false;
+                }
+
+                if (valid) {
+                    const { P1, P2, P_total } = powerCalculator.thickLensPower(R1_thick_p, n_aire_p, n_vidrio_p, d_lente_p, R2_thick_p);
+                    resultText = `Poder Superficie Frontal (P₁): ${P1.toFixed(2)} D\n`;
+                    resultText += `Poder Superficie Posterior (P₂): ${P2.toFixed(2)} D\n`;
+                    resultText += `Poder Total Lente Grueso: ${P_total.toFixed(2)} D`;
+                }
+                break;
+        }
+    } catch (e) {
+        resultText = `Error: ${e.message}`;
+        valid = false; 
+    }
+    
+    if (valid && resultText) {
+        powerResultDisplay.textContent = resultText;
+        powerResultDisplay.classList.remove('hidden');
+    } else if (!valid && resultText === '') { // Validation error, no result text generated yet
+        powerResultDisplay.textContent = 'Corrija los errores en los campos.';
+        powerResultDisplay.classList.remove('hidden');
+        powerResultDisplay.classList.add('text-red-700', 'bg-red-50'); 
+    } else if (!valid && resultText !== '') { // Error during calculation
+         powerResultDisplay.textContent = resultText; // Show the error message
+        powerResultDisplay.classList.remove('hidden');
+        powerResultDisplay.classList.add('text-red-700', 'bg-red-50');
+    }
+     else { 
+        powerResultDisplay.classList.add('hidden');
+    }
+}
+
+
+showPowerCalculatorBtn.addEventListener('click', openPowerCalculatorModal);
+closePowerCalcBtn.addEventListener('click', closePowerCalculatorModal);
+powerCalcTypeSelect.addEventListener('change', (e) => updatePowerCalculatorForm(e.target.value));
+
+
+// --- Exportar / Importar ---
+exportSystemBtn.addEventListener('click', () => {
+    if (opticalSystem.length === 0) {
+        showAlert('Exportar Sistema', 'No hay nada que exportar. Agregue fases al sistema.');
+        return;
+    }
+    const systemJSON = JSON.stringify(opticalSystem.map(phase => ({type: phase.type, params: phase.params})), null, 2); 
+    const blob = new Blob([systemJSON], {type: 'application/json'});
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'sistema_optico.json';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    showAlert('Exportar Sistema', 'Sistema óptico exportado como sistema_optico.json');
+});
+
+importSystemInput.addEventListener('change', (event) => {
+    const file = event.target.files[0];
+    if (file) {
+        const reader = new FileReader();
+        reader.onload = (e) => {
+            try {
+                const importedPhases = JSON.parse(e.target.result);
+                if (Array.isArray(importedPhases)) {
+                    const isValidImport = importedPhases.every(phase => 
+                        phase.hasOwnProperty('type') && phase.hasOwnProperty('params')
+                    );
+
+                    if (isValidImport) {
+                        opticalSystem = []; 
+                        importedPhases.forEach(phaseData => {
+                            let matrix;
+                             try {
+                                switch (phaseData.type) {
+                                    case 'translation': matrix = opticalMatrices.translation(phaseData.params.d, phaseData.params.n_trans); break;
+                                    case 'thin_lens': matrix = opticalMatrices.thinLens({f: phaseData.params.f, P: phaseData.params.P}); break;
+                                    case 'surface': matrix = opticalMatrices.surface(phaseData.params.R_surf, phaseData.params.n1_surf, phaseData.params.n2_surf); break;
+                                    case 'reflection_surface': matrix = opticalMatrices.reflectionSurface(phaseData.params.R_reflect /*, phaseData.params.n_medium_reflect*/); break;
+                                    case 'thick_lens': matrix = opticalMatrices.thickLens(phaseData.params.R1_thick, phaseData.params.n_inc_thick, phaseData.params.n_lente_thick, phaseData.params.d_lente_thick, phaseData.params.R2_thick, phaseData.params.n_salida_thick); break;
+                                    default: throw new Error(`Tipo de fase desconocido: ${phaseData.type}`);
+                                }
+                                opticalSystem.push({ ...phaseData, matrix });
+                            } catch (calcError) {
+                                console.warn(`Error al procesar fase importada (${phaseData.type}): ${calcError.message}. Fase omitida.`);
+                                showAlert('Advertencia de Importación', `Se omitió una fase (${phaseData.type}) durante la importación debido a parámetros inválidos: ${calcError.message}`);
+                            }
+                        });
+                        renderSystem();
+                        showAlert('Importar Sistema', 'Sistema óptico importado. Revise si alguna fase fue omitida por errores.');
+                    } else {
+                         showAlert('Error de Importación', 'El archivo JSON no tiene el formato esperado para las fases.');
+                    }
+                } else {
+                    showAlert('Error de Importación', 'El archivo JSON no contiene un array de fases.');
+                }
+            } catch (error) {
+                showAlert('Error de Importación', `Error al leer el archivo JSON: ${error.message}`);
+            } finally {
+                importSystemInput.value = ''; 
+            }
+        };
+        reader.readAsText(file);
+    }
+});
+
+
+// --- Inicialización ---
+document.addEventListener('DOMContentLoaded', () => {
+    updateParamsForm(phaseTypeSelect.value); 
+    updatePowerCalculatorForm(powerCalcTypeSelect.value);
+    renderSystem(); 
+});
+
+</script>
+</body>
+</html>
