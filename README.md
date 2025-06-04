@@ -26,3 +26,47 @@ $ xdg-open Calculo_de_matrices.html
 - Se usan Tailwind CSS y Font Awesome a través de CDN para estilizar la página.
 
 Cualquier sugerencia o mejora es bienvenida. ¡Disfruta explorando sistemas ópticos!
+
+## Convención de matrices
+
+La aplicación sigue la notación empleada en algunos cursos de óptica para el vector de rayos \( (\theta, y) \). Las matrices implementadas son:
+
+- **Traslación** a través de una distancia \(d\) en un medio de índice \(n\):
+
+  \[
+  \begin{pmatrix}
+  1 & 0 \\
+  \frac{d}{n} & 1
+  \end{pmatrix}
+  \]
+
+- **Refracción** en una superficie de radio \(R\) entre índices \(n_1\) y \(n_2\):
+
+  \[
+  \begin{pmatrix}
+  1 & \frac{n_2 - n_1}{R} \\
+  0 & 1
+  \end{pmatrix}
+  \]
+
+- **Reflexión** en un espejo de radio \(R\) inmerso en un medio de índice \(n\):
+
+  \[
+  \begin{pmatrix}
+  1 & \frac{2 n}{R} \\
+  0 & 1
+  \end{pmatrix}
+  \]
+
+  Para un espejo plano (\(R \to \infty\)) la matriz se reduce a la identidad.
+
+- **Lente delgada** con distancia focal \(f\) y medio de salida de índice \(n\):
+
+  \[
+  \begin{pmatrix}
+  1 & 0 \\
+  -\frac{n}{f} & 1
+  \end{pmatrix}
+  \]
+
+Estas expresiones son las utilizadas internamente por `Calculo_de_matrices.html` para construir la matriz total del sistema óptico.
