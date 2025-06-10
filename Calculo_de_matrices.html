@@ -566,22 +566,54 @@ function updateParamsForm(type, params = {}) {
             setTimeout(toggleLensInputs,0); 
             break;
         case 'surface': // Refracción
-            fields.push(createRadiusField('R_surf', 'Radio de Curvatura R (mm):', params.R_surf || '', 'ej: 100 (positivo convexo)', true, 'any', !isFinite(params.R_surf)));
+            fields.push(createRadiusField(
+                'R_surf',
+                'Radio de Curvatura R (mm):',
+                (typeof params.R_surf === 'number' && isFinite(params.R_surf)) ? params.R_surf : '',
+                'ej: 100 (positivo convexo)',
+                true,
+                'any',
+                typeof params.R_surf === 'number' && !isFinite(params.R_surf)
+            ));
             fields.push(createInputField('n1_surf', 'Índice Incidente n₁:', 'number', params.n1_surf || '1.0', 'ej: 1.0', true, '0.001'));
             fields.push(createInputField('n2_surf', 'Índice Transmitido n₂:', 'number', params.n2_surf || '1.5', 'ej: 1.5', true, '0.001'));
             break;
         case 'reflection_surface': // Reflexión
-            fields.push(createRadiusField('R_reflect', 'Radio Curvatura Espejo R (mm):', params.R_reflect || '', 'ej: 200 (R>0 cóncavo)', true, 'any', !isFinite(params.R_reflect)));
+            fields.push(createRadiusField(
+                'R_reflect',
+                'Radio Curvatura Espejo R (mm):',
+                (typeof params.R_reflect === 'number' && isFinite(params.R_reflect)) ? params.R_reflect : '',
+                'ej: 200 (R>0 cóncavo)',
+                true,
+                'any',
+                typeof params.R_reflect === 'number' && !isFinite(params.R_reflect)
+            ));
             // n_medium is not directly in the matrix [[1,0],[-2/R, -1]] but good for consistency if we extend.
             // For now, the matrix form used does not require n_medium directly.
             // fields.push(createInputField('n_medium_reflect', 'Índice del Medio n:', 'number', params.n_medium_reflect || '1.0', 'ej: 1.0', true, '0.001'));
             break;
         case 'thick_lens':
-            fields.push(createRadiusField('R1_thick', 'Radio Superficie Frontal R₁ (mm):', params.R1_thick || '', 'ej: 100', true, 'any', !isFinite(params.R1_thick)));
+            fields.push(createRadiusField(
+                'R1_thick',
+                'Radio Superficie Frontal R₁ (mm):',
+                (typeof params.R1_thick === 'number' && isFinite(params.R1_thick)) ? params.R1_thick : '',
+                'ej: 100',
+                true,
+                'any',
+                typeof params.R1_thick === 'number' && !isFinite(params.R1_thick)
+            ));
             fields.push(createInputField('n_inc_thick', 'Índice Incidente n_inc:', 'number', params.n_inc_thick || '1.0', 'ej: 1.0', true, '0.001'));
             fields.push(createInputField('n_lente_thick', 'Índice de la Lente n_lente:', 'number', params.n_lente_thick || '1.5', 'ej: 1.5', true, '0.001'));
             fields.push(createInputField('d_lente_thick', 'Espesor Lente d_lente (mm):', 'number', params.d_lente_thick || '', 'ej: 5'));
-            fields.push(createRadiusField('R2_thick', 'Radio Superficie Posterior R₂ (mm):', params.R2_thick || '', 'ej: -100', true, 'any', !isFinite(params.R2_thick)));
+            fields.push(createRadiusField(
+                'R2_thick',
+                'Radio Superficie Posterior R₂ (mm):',
+                (typeof params.R2_thick === 'number' && isFinite(params.R2_thick)) ? params.R2_thick : '',
+                'ej: -100',
+                true,
+                'any',
+                typeof params.R2_thick === 'number' && !isFinite(params.R2_thick)
+            ));
             fields.push(createInputField('n_salida_thick', 'Índice de Salida n_salida:', 'number', params.n_salida_thick || '1.0', 'ej: 1.0', true, '0.001'));
             break;
     }
@@ -934,23 +966,55 @@ function updatePowerCalculatorForm(type, params = {}) {
 
     switch(type) {
         case 'interface': // Refracción
-            fields.push(createRadiusField('power_R_surf', 'Radio R (mm):', params.R_surf || '', 'ej: 100', true, 'any', !isFinite(params.R_surf)));
+            fields.push(createRadiusField(
+                'power_R_surf',
+                'Radio R (mm):',
+                (typeof params.R_surf === 'number' && isFinite(params.R_surf)) ? params.R_surf : '',
+                'ej: 100',
+                true,
+                'any',
+                typeof params.R_surf === 'number' && !isFinite(params.R_surf)
+            ));
             fields.push(createInputField('power_n1_surf', 'Índice n₁:', 'number', params.n1_surf || '1.0', 'ej: 1.0', true, '0.001'));
             fields.push(createInputField('power_n2_surf', 'Índice n₂:', 'number', params.n2_surf || '1.5', 'ej: 1.5', true, '0.001'));
             break;
         case 'mirror_power': // Reflexión
-            fields.push(createRadiusField('power_R_mirror', 'Radio Espejo R (mm):', params.R_mirror || '', 'ej: 200 (R>0 cóncavo)', true, 'any', !isFinite(params.R_mirror)));
+            fields.push(createRadiusField(
+                'power_R_mirror',
+                'Radio Espejo R (mm):',
+                (typeof params.R_mirror === 'number' && isFinite(params.R_mirror)) ? params.R_mirror : '',
+                'ej: 200 (R>0 cóncavo)',
+                true,
+                'any',
+                typeof params.R_mirror === 'number' && !isFinite(params.R_mirror)
+            ));
             fields.push(createInputField('power_n_medium_mirror', 'Índice del Medio n:', 'number', params.n_medium_mirror || '1.0', 'ej: 1.0', true, '0.001'));
             break;
         case 'thin_lens_power':
             fields.push(createInputField('power_f_tl', 'Distancia Focal f (mm):', 'number', params.f_tl || '', 'ej: 100'));
             break;
         case 'thick_lens_power':
-            fields.push(createRadiusField('power_R1_thick_p', 'Radio R₁ (mm):', params.R1_thick_p || '', 'ej: 100', true, 'any', !isFinite(params.R1_thick_p)));
+            fields.push(createRadiusField(
+                'power_R1_thick_p',
+                'Radio R₁ (mm):',
+                (typeof params.R1_thick_p === 'number' && isFinite(params.R1_thick_p)) ? params.R1_thick_p : '',
+                'ej: 100',
+                true,
+                'any',
+                typeof params.R1_thick_p === 'number' && !isFinite(params.R1_thick_p)
+            ));
             fields.push(createInputField('power_n_aire_thick_p', 'Índice Aire/Incidente n_aire:', 'number', params.n_aire_thick_p || '1.0', 'ej: 1.0', true, '0.001'));
             fields.push(createInputField('power_n_vidrio_thick_p', 'Índice Vidrio n_vidrio:', 'number', params.n_vidrio_thick_p || '1.5', 'ej: 1.5', true, '0.001'));
             fields.push(createInputField('power_d_lente_thick_p', 'Espesor d (mm):', 'number', params.d_lente_thick_p || '', 'ej: 5'));
-            fields.push(createRadiusField('power_R2_thick_p', 'Radio R₂ (mm):', params.R2_thick_p || '', 'ej: -100', true, 'any', !isFinite(params.R2_thick_p)));
+            fields.push(createRadiusField(
+                'power_R2_thick_p',
+                'Radio R₂ (mm):',
+                (typeof params.R2_thick_p === 'number' && isFinite(params.R2_thick_p)) ? params.R2_thick_p : '',
+                'ej: -100',
+                true,
+                'any',
+                typeof params.R2_thick_p === 'number' && !isFinite(params.R2_thick_p)
+            ));
             break;
     }
     
@@ -1152,9 +1216,16 @@ exportSystemBtn.addEventListener('click', () => {
         showAlert('Exportar Sistema', 'No hay nada que exportar. Agregue fases al sistema.');
         return;
     }
-    const systemJSON = JSON.stringify(opticalSystem.map(phase => ({type: phase.type, params: phase.params})), (k, v) => {
-        return (typeof v === 'number' && !isFinite(v)) ? 'Infinity' : v;
-    }, 2);
+    const replacer = (k, v) => {
+        if (v === Infinity) return 'Infinity';
+        if (v === -Infinity) return '-Infinity';
+        return v;
+    };
+    const systemJSON = JSON.stringify(
+        opticalSystem.map(phase => ({ type: phase.type, params: phase.params })),
+        replacer,
+        2
+    );
     const blob = new Blob([systemJSON], {type: 'application/json'});
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
@@ -1173,7 +1244,11 @@ importSystemInput.addEventListener('change', (event) => {
         const reader = new FileReader();
         reader.onload = (e) => {
             try {
-                const importedPhases = JSON.parse(e.target.result, (k, v) => v === 'Infinity' ? Infinity : v);
+                const importedPhases = JSON.parse(e.target.result, (k, v) => {
+                    if (v === 'Infinity') return Infinity;
+                    if (v === '-Infinity') return -Infinity;
+                    return v;
+                });
                 if (Array.isArray(importedPhases)) {
                     const isValidImport = importedPhases.every(phase => 
                         phase.hasOwnProperty('type') && phase.hasOwnProperty('params')
