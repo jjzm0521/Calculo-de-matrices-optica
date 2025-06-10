@@ -238,6 +238,18 @@
 
 <script>
 // --- Funciones de utilidad para matrices (equivalente a numpy) ---
+
+function formatNumber(num, precision = 2) {
+    if (num === null || num === undefined) return 'N/A';
+    if (num === Infinity || num === -Infinity) return '∞';
+    const numFloat = parseFloat(num);
+    if (isNaN(numFloat)) {
+        if (String(num).toLowerCase() === "inf" || String(num).toLowerCase() === "infinity") return '∞';
+        return String(num);
+    }
+    return numFloat.toFixed(precision);
+}
+
 const matrixUtils = {
     multiply: function(A, B) {
         return [
@@ -279,22 +291,82 @@ reflectionSurface: function(R_mirror, n_medium = 1.0) { // Reflexión
     const P_reflect_term = (typeof R_mirror === 'number' && isFinite(R_mirror) && R_mirror !== 0) ? (2 * n_medium) / R_mirror : 0;
     return [[1, P_reflect_term], [0, 1]]; // Assuming A was equivalent to P_reflect_term
 },
-    thinLens: function({f, P, n = 1.0}) { // n is the surrounding medium index
-        let Pow_len_mm_inv; // Power in mm^-1 (Potencia focal)
-        if (n <= 0) throw new Error("Índice 'n' del medio debe ser > 0.");
+thinLens: function({f, P, n_surrounding = 1.0, R1, R2, n1_incident, nl_lens, n2_exit}) {
+    let Pow_len_mm_inv;
 
-        if (P !== undefined && P !== null) { // P is Power in Diopters
-            Pow_len_mm_inv = P / 1000.0;
-        } else if (f !== undefined && f !== null) { // f is focal length in mm
-            if (f === 0) throw new Error("Distancia focal 'f' no puede ser cero.");
-            // Power = n_medium / f (converted to mm^-1)
-            // This matches one common definition of focal power.
-            Pow_len_mm_inv = n / f;
-        } else {
-            throw new Error("Debe proveer 'f' (distancia focal) o 'P' (poder) para lente delgada.");
+    // Validate refractive indices if they are provided at the top level or part of detailed calculation
+    if (n_surrounding !== undefined && n_surrounding <= 0) {
+        throw new Error("Índice 'n_surrounding' del medio debe ser > 0.");
+    }
+    // These will be checked again specifically if the detailed path is taken,
+    // but an early check if values are passed is good.
+    if (n1_incident !== undefined && n1_incident <= 0) {
+        throw new Error("Índice 'n1_incident' (incidente) debe ser > 0.");
+    }
+    if (nl_lens !== undefined && nl_lens <= 0) {
+        throw new Error("Índice 'nl_lens' (del lente) debe ser > 0.");
+    }
+    if (n2_exit !== undefined && n2_exit <= 0) {
+        throw new Error("Índice 'n2_exit' (de salida) debe ser > 0.");
+    }
+
+    if (P !== undefined && P !== null) { // P is Power in Diopters
+        Pow_len_mm_inv = P / 1000.0;
+    } else if (f !== undefined && f !== null) { // f is focal length in mm
+        if (f === 0) {
+            throw new Error("Distancia focal 'f' no puede ser cero.");
         }
-        return [[1, -Pow_len_mm_inv], [0, 1]];
-    },
+        // n_surrounding must be defined (default 1.0) and positive if f is used.
+        if (n_surrounding === undefined || n_surrounding <= 0) {
+             throw new Error("Índice 'n_surrounding' del medio debe ser > 0 cuando se usa 'f'. Revise el valor proporcionado o el predeterminado.");
+        }
+        Pow_len_mm_inv = n_surrounding / f;
+    } else if (R1 !== undefined && R2 !== undefined && n1_incident !== undefined && nl_lens !== undefined && n2_exit !== undefined) {
+        // Using detailed parameters: Radii R1, R2 in mm. Refractive indices n1_incident, nl_lens, n2_exit.
+
+        // Ensure positive refractive indices for this calculation path (critical)
+        if (n1_incident <= 0 || nl_lens <= 0 || n2_exit <= 0) {
+            throw new Error("Todos los índices de refracción (n1_incident, nl_lens, n2_exit) deben ser > 0 para el cálculo detallado.");
+        }
+
+        const R1_val = (R1 === "inf" || R1 === Infinity) ? Infinity : parseFloat(R1);
+        const R2_val = (R2 === "inf" || R2 === Infinity) ? Infinity : parseFloat(R2);
+
+        if (isNaN(R1_val) || isNaN(R2_val)) {
+            throw new Error("Radios R1 y R2 deben ser números o 'inf'.");
+        }
+
+        if (R1_val === Infinity && R2_val === Infinity) { // Both surfaces flat
+            Pow_len_mm_inv = 0;
+        } else if (R1_val === Infinity) { // First surface flat, second curved/zero
+            if (R2_val === 0 && (n2_exit - nl_lens) !== 0) {
+                throw new Error("Radio R2 no puede ser cero si R1 es infinito y hay cambio de índice en la segunda superficie (nl_lens -> n2_exit).");
+            }
+            Pow_len_mm_inv = (R2_val === 0) ? 0 : (n2_exit - nl_lens) / R2_val;
+        } else if (R2_val === Infinity) { // First surface curved/zero, second flat
+            if (R1_val === 0 && (nl_lens - n1_incident) !== 0) {
+                throw new Error("Radio R1 no puede ser cero si R2 es infinito y hay cambio de índice en la primera superficie (n1_incident -> nl_lens).");
+            }
+            Pow_len_mm_inv = (R1_val === 0) ? 0 : (nl_lens - n1_incident) / R1_val;
+        } else { // Both surfaces are curved (or potentially zero if indices match, effectively flat)
+            if (R1_val === 0 && (nl_lens - n1_incident) !== 0) {
+                throw new Error("Radio R1 no puede ser cero si los índices n1_incident y nl_lens difieren.");
+            }
+            if (R2_val === 0 && (n2_exit - nl_lens) !== 0) {
+                throw new Error("Radio R2 no puede ser cero si los índices nl_lens y n2_exit difieren.");
+            }
+
+            // Power of first surface. If R1_val is 0, P1 is 0 (since error for differing indices already handled).
+            const P1 = (R1_val === 0) ? 0 : (nl_lens - n1_incident) / R1_val;
+            // Power of second surface. If R2_val is 0, P2 is 0.
+            const P2 = (R2_val === 0) ? 0 : (n2_exit - nl_lens) / R2_val;
+            Pow_len_mm_inv = P1 + P2;
+        }
+    } else {
+        throw new Error("Debe proveer 'f' (distancia focal) o 'P' (poder), o los parámetros detallados (R1, R2, n1_incident, nl_lens, n2_exit) para lente delgada.");
+    }
+    return [[1, -Pow_len_mm_inv], [0, 1]];
+},
     thickLens: function(R1, n_inc, n_lente, d_lente, R2, n_salida) {
         if (n_inc <= 0) throw new Error("Índice 'n_inc' debe ser > 0.");
         if (n_lente <= 0) throw new Error("Índice 'n_lente' debe ser > 0.");
@@ -565,28 +637,136 @@ function updateParamsForm(type, params = {}) {
             fields.push(createInputField('d', 'Distancia d (mm):', 'number', params.d || '', 'ej: 50'));
             fields.push(createInputField('n_trans', 'Índice n (medio):', 'number', params.n_trans || '1.0', 'ej: 1.0', true, '0.001'));
             break;
-        case 'thin_lens':
-            const usePower = params.P !== undefined && params.P !== null;
-            fields.push(createCheckboxField('use_power', 'Usar Potencia (D) en lugar de f', usePower));
-            fields.push(createInputField('f', 'Distancia Focal f (mm):', 'number', params.f || '', 'ej: 100 (positivo convergente)', !usePower));
-            fields.push(createInputField('P', 'Potencia P (Dioptrías):', 'number', params.P || '', 'ej: 10', usePower));
-            
-            const usePowerCheckbox = fields[0].querySelector('#use_power');
-            const fInput = fields[1].querySelector('#f');
-            const pInput = fields[2].querySelector('#P');
-            
-            function toggleLensInputs() {
-                if (usePowerCheckbox.checked) {
-                    fInput.disabled = true; fInput.required = false; fInput.value = '';
-                    pInput.disabled = false; pInput.required = true;
-                } else {
-                    fInput.disabled = false; fInput.required = true;
-                    pInput.disabled = true; pInput.required = false; pInput.value = '';
-                }
+case 'thin_lens':
+    // Determine if initially in detailed mode based on presence of detailed params
+    const initialIsDetailed = params && (params.R1_tl !== undefined || params.n1_incident_tl !== undefined || params.nl_lens_tl !== undefined);
+
+    // --- Create UI elements ---
+    const inputMethodChoiceDiv = document.createElement('div');
+    inputMethodChoiceDiv.classList.add('mb-4', 'p-3', 'bg-slate-100', 'rounded-md', 'border', 'border-slate-200');
+    const choiceCheckboxContainer = createCheckboxField('tl_input_method_choice', 'Usar cálculo por radios e índices (Lensmaker)', initialIsDetailed);
+    const tlInputChoiceCheckbox = choiceCheckboxContainer.querySelector('input[type="checkbox"]'); // Get the actual checkbox input
+    if (tlInputChoiceCheckbox) tlInputChoiceCheckbox.classList.add('text-sky-600');
+    const choiceLabel = choiceCheckboxContainer.querySelector('label');
+    if (choiceLabel) choiceLabel.classList.add('text-sm', 'font-medium', 'text-slate-700', 'ml-2');
+    inputMethodChoiceDiv.appendChild(choiceCheckboxContainer);
+
+    const detailedParamsDiv = document.createElement('div');
+    detailedParamsDiv.id = 'thin_lens_detailed_params_div';
+    detailedParamsDiv.classList.add('space-y-3', 'p-3', 'border', 'border-sky-200', 'rounded-md', 'mt-2');
+
+    detailedParamsDiv.appendChild(createRadiusField('R1_tl', 'Radio R₁ (mm):', params.R1_tl, 'ej: 100 (+ sup. convexa)', true, 'any', params.R1_tl === Infinity || params.R1_tl === "inf"));
+    detailedParamsDiv.appendChild(createInputField('n1_incident_tl', 'Índice Incidente n₁:', 'number', params.n1_incident_tl || '1.0', 'ej: 1.0', true, '0.001'));
+    detailedParamsDiv.appendChild(createInputField('nl_lens_tl', 'Índice de la Lente nL:', 'number', params.nl_lens_tl || '1.5', 'ej: 1.5', true, '0.001'));
+    detailedParamsDiv.appendChild(createRadiusField('R2_tl', 'Radio R₂ (mm):', params.R2_tl, 'ej: -100 (+ sup. cóncava)', true, 'any', params.R2_tl === Infinity || params.R2_tl === "inf"));
+    detailedParamsDiv.appendChild(createInputField('n2_exit_tl', 'Índice de Salida n₂:', 'number', params.n2_exit_tl || '1.0', 'ej: 1.0', true, '0.001'));
+
+    const focalPowerParamsDiv = document.createElement('div');
+    focalPowerParamsDiv.id = 'thin_lens_focal_power_div';
+    focalPowerParamsDiv.classList.add('space-y-3', 'p-3', 'border', 'border-slate-200', 'rounded-md', 'mt-2');
+
+    const initialUsePower = !!(params && params.use_power);
+    const usePowerCheckboxContainer = createCheckboxField('use_power', 'Usar Potencia P (Dioptrías) en lugar de f', initialUsePower);
+    const usePowerCheckbox = usePowerCheckboxContainer.querySelector('input[type="checkbox"]');
+    focalPowerParamsDiv.appendChild(usePowerCheckboxContainer);
+    focalPowerParamsDiv.appendChild(createInputField('f', 'Distancia Focal f (mm):', 'number', params.f || '', 'ej: 100 (+ convergente)', !initialUsePower, 'any'));
+    focalPowerParamsDiv.appendChild(createInputField('P', 'Potencia P (Dioptrías):', 'number', params.P || '', 'ej: 10 (+ convergente)', initialUsePower, 'any'));
+    focalPowerParamsDiv.appendChild(createInputField('n_surrounding_tl', 'Índice Medio Circundante n (para cálculo con f):', 'number', params.n_surrounding_tl || '1.0', 'ej: 1.0', true, '0.001'));
+
+    paramsContainer.innerHTML = '';
+    paramsContainer.appendChild(inputMethodChoiceDiv);
+    paramsContainer.appendChild(detailedParamsDiv);
+    paramsContainer.appendChild(focalPowerParamsDiv);
+
+    const fInput = focalPowerParamsDiv.querySelector('#f');
+    const pInput = focalPowerParamsDiv.querySelector('#P');
+    const nSurroundingInput = focalPowerParamsDiv.querySelector('#n_surrounding_tl');
+
+    const detailedFieldInputs = Array.from(detailedParamsDiv.querySelectorAll('input, select, textarea'));
+    const focalPowerFieldInputs = Array.from(focalPowerParamsDiv.querySelectorAll('input, select, textarea'));
+
+    function setElementDisabled(element, disabled, clearValue = true) {
+        if (!element) return;
+        element.disabled = disabled;
+        const originallyRequired = element.dataset.originalRequired === 'true';
+        element.required = !disabled && originallyRequired;
+
+        if (disabled && clearValue) {
+            if (element.type === 'checkbox' || element.type === 'radio') {
+                element.checked = false;
+            } else if (element.value !== undefined) {
+                element.value = '';
             }
-            usePowerCheckbox.addEventListener('change', toggleLensInputs);
-            setTimeout(toggleLensInputs,0); 
-            break;
+        }
+    }
+
+    [...detailedFieldInputs, ...focalPowerFieldInputs].forEach(el => {
+        if (el) el.dataset.originalRequired = String(el.required);
+    });
+
+    function toggleLensInputsDetailed() {
+        if (!tlInputChoiceCheckbox) return;
+        const isDetailed = tlInputChoiceCheckbox.checked;
+
+        detailedParamsDiv.style.display = isDetailed ? 'block' : 'none';
+        focalPowerParamsDiv.style.display = isDetailed ? 'none' : 'block';
+
+        detailedFieldInputs.forEach(input => setElementDisabled(input, !isDetailed, true));
+        focalPowerFieldInputs.forEach(input => setElementDisabled(input, isDetailed, true));
+
+        if (isDetailed) {
+            const r1Inf = detailedParamsDiv.querySelector('#R1_tl_inf');
+            const r1Num = detailedParamsDiv.querySelector('#R1_tl');
+            if (r1Inf && r1Num) r1Num.disabled = r1Inf.checked || !isDetailed;
+
+            const r2Inf = detailedParamsDiv.querySelector('#R2_tl_inf');
+            const r2Num = detailedParamsDiv.querySelector('#R2_tl');
+            if (r2Inf && r2Num) r2Num.disabled = r2Inf.checked || !isDetailed;
+        } else {
+            toggleFocalPowerInputs();
+        }
+    }
+
+    function toggleFocalPowerInputs() {
+        if (!usePowerCheckbox || (tlInputChoiceCheckbox && tlInputChoiceCheckbox.checked)) return;
+
+        const shouldUsePower = usePowerCheckbox.checked;
+        setElementDisabled(usePowerCheckbox, false, false);
+
+        setElementDisabled(fInput, shouldUsePower, true);
+        setElementDisabled(pInput, !shouldUsePower, true);
+        setElementDisabled(nSurroundingInput, shouldUsePower || (fInput && fInput.disabled), true);
+    }
+
+    if (tlInputChoiceCheckbox) {
+        tlInputChoiceCheckbox.addEventListener('change', toggleLensInputsDetailed);
+    }
+    if (usePowerCheckbox) {
+        usePowerCheckbox.addEventListener('change', toggleFocalPowerInputs);
+    }
+
+    const r1InfCheck = detailedParamsDiv.querySelector('#R1_tl_inf');
+    const r1NumInput = detailedParamsDiv.querySelector('#R1_tl');
+    if (r1InfCheck && r1NumInput) {
+      r1InfCheck.addEventListener('change', () => {
+        if (tlInputChoiceCheckbox && tlInputChoiceCheckbox.checked) {
+            setElementDisabled(r1NumInput, r1InfCheck.checked, true);
+        }
+      });
+    }
+    const r2InfCheck = detailedParamsDiv.querySelector('#R2_tl_inf');
+    const r2NumInput = detailedParamsDiv.querySelector('#R2_tl');
+    if (r2InfCheck && r2NumInput) {
+      r2InfCheck.addEventListener('change', () => {
+        if (tlInputChoiceCheckbox && tlInputChoiceCheckbox.checked) {
+            setElementDisabled(r2NumInput, r2InfCheck.checked, true);
+        }
+      });
+    }
+
+    toggleLensInputsDetailed();
+
+    break;
         case 'surface': // Refracción
             fields.push(createRadiusField(
                 'R_surf',
@@ -699,16 +879,72 @@ function validateAndGetParams() {
             params.d = getValidatedFloat('d', 'Distancia d', true, true); 
             params.n_trans = getValidatedFloat('n_trans', 'Índice n', false, false); 
             break;
-        case 'thin_lens':
-            const usePower = document.getElementById('use_power').checked;
-            if (usePower) {
-                params.P = getValidatedFloat('P', 'Potencia P', true, true); 
-                if (params.P === null && document.getElementById('P').required) isValid = false;
-            } else {
-                params.f = getValidatedFloat('f', 'Distancia Focal f', false, true); 
-                 if (params.f === null && document.getElementById('f').required) isValid = false;
-            }
-            break;
+case 'thin_lens':
+    const useDetailedInput = document.getElementById('tl_input_method_choice')?.checked;
+    params.tl_use_detailed = useDetailedInput; // Store the choice
+
+    if (useDetailedInput) {
+        // Detailed parameters: R1, n1, nl, R2, n2
+        params.R1_tl = getValidatedFloat('R1_tl', 'Radio R₁', false, true); // allowZero=false, allowNegative=true
+        params.n1_incident_tl = getValidatedFloat('n1_incident_tl', 'Índice n₁', false, false); // allowZero=false, allowNegative=false (indices > 0)
+        params.nl_lens_tl = getValidatedFloat('nl_lens_tl', 'Índice nL', false, false);
+        params.R2_tl = getValidatedFloat('R2_tl', 'Radio R₂', false, true);
+        params.n2_exit_tl = getValidatedFloat('n2_exit_tl', 'Índice n₂', false, false);
+
+        // Validate that indices are strictly positive if provided and not NaN
+        if (params.n1_incident_tl !== null && !(params.n1_incident_tl > 0)) {
+            showFieldError(document.getElementById('n1_incident_tl'), 'Índice n₁ debe ser > 0.');
+            isValid = false;
+        }
+        if (params.nl_lens_tl !== null && !(params.nl_lens_tl > 0)) {
+            showFieldError(document.getElementById('nl_lens_tl'), 'Índice nL debe ser > 0.');
+            isValid = false;
+        }
+        if (params.n2_exit_tl !== null && !(params.n2_exit_tl > 0)) {
+            showFieldError(document.getElementById('n2_exit_tl'), 'Índice n₂ debe ser > 0.');
+            isValid = false;
+        }
+
+        // Check if any required field in detailed mode was missed (getValidatedFloat handles individual required checks)
+        // This is more about ensuring the whole set is there if this path is chosen.
+        // However, getValidatedFloat already sets isValid = false if a required field is empty.
+        // So, specific checks like `if (params.R1_tl === null && document.getElementById('R1_tl').required)` might be redundant here
+        // if getValidatedFloat does its job.
+
+        // Clear focal/power params
+        delete params.f;
+        delete params.P;
+        delete params.use_power;
+        delete params.n_surrounding_tl;
+
+    } else {
+        // Focal length / Power parameters
+        const usePower = document.getElementById('use_power')?.checked;
+        params.use_power = usePower;
+
+        if (usePower) {
+            params.P = getValidatedFloat('P', 'Potencia P', true, true); // allowZero=true
+            if (params.P === null && document.getElementById('P')?.required) isValid = false;
+            delete params.f; // Clear f
+        } else {
+            params.f = getValidatedFloat('f', 'Distancia Focal f', false, true); // allowZero=false for f
+            if (params.f === null && document.getElementById('f')?.required) isValid = false;
+            delete params.P; // Clear P
+        }
+        params.n_surrounding_tl = getValidatedFloat('n_surrounding_tl', 'Índice Medio Circundante n', false, false);
+        if (params.n_surrounding_tl !== null && !(params.n_surrounding_tl > 0)) {
+            showFieldError(document.getElementById('n_surrounding_tl'), 'Índice Medio Circundante n debe ser > 0.');
+            isValid = false;
+        }
+
+        // Clear detailed params
+        delete params.R1_tl;
+        delete params.n1_incident_tl;
+        delete params.nl_lens_tl;
+        delete params.R2_tl;
+        delete params.n2_exit_tl;
+    }
+    break;
         case 'surface': // Refracción
             params.R_surf = getValidatedFloat('R_surf', 'Radio R', false, true); 
             params.n1_surf = getValidatedFloat('n1_surf', 'Índice n₁', false, false); 
@@ -776,23 +1012,42 @@ function renderPhaseList() {
 
             let paramsText = '';
             if (phase.type === 'translation') {
-                paramsText = `d=${phase.params.d}mm, n=${phase.params.n_trans}`;
+                paramsText = `d=${formatNumber(phase.params.d,2)}mm, n=${formatNumber(phase.params.n_trans,3)}`;
             } else if (phase.type === 'thin_lens') {
-                if (phase.params.f !== undefined && phase.params.f !== null) {
-                    paramsText = `f=${phase.params.f > 0 ? '+' : ''}${phase.params.f}mm`;
-                } else if (phase.params.P !== undefined && phase.params.P !== null) {
-                     paramsText = `P=${phase.params.P > 0 ? '+' : ''}${phase.params.P}D`;
+                // Check if detailed parameters were used by looking for tl_use_detailed or R1_tl
+                if (phase.params && (phase.params.tl_use_detailed === true || (phase.params.tl_use_detailed === undefined && phase.params.R1_tl !== undefined))) {
+                    const R1_txt = formatNumber(phase.params.R1_tl, 2); // formatNumber handles "inf"
+                    const R2_txt = formatNumber(phase.params.R2_tl, 2); // formatNumber handles "inf"
+                    const n1 = formatNumber(phase.params.n1_incident_tl, 3);
+                    const nl = formatNumber(phase.params.nl_lens_tl, 3);
+                    const n2 = formatNumber(phase.params.n2_exit_tl, 3);
+                    paramsText = `R₁:${R1_txt}, n₁:${n1}, nL:${nl}, n₂:${n2}, R₂:${R2_txt}`;
+                } else { // Original f or P mode
+                    if (phase.params.f !== undefined && phase.params.f !== null) {
+                        paramsText = `f=${phase.params.f > 0 ? '+' : ''}${formatNumber(phase.params.f, 2)}mm`;
+                        if (phase.params.n_surrounding_tl !== undefined) {
+                            const nSurr = parseFloat(phase.params.n_surrounding_tl);
+                            // Only show n_surrounding if it's not effectively 1.0 (default air)
+                            if (!isNaN(nSurr) && Math.abs(nSurr - 1.0) > 1e-9) {
+                                paramsText += ` (n=${formatNumber(nSurr, 3)})`;
+                            }
+                        }
+                    } else if (phase.params.P !== undefined && phase.params.P !== null) {
+                         paramsText = `P=${phase.params.P > 0 ? '+' : ''}${formatNumber(phase.params.P, 2)}D`;
+                    } else {
+                        paramsText = "Lente delgada: Parámetros incompletos";
+                    }
                 }
             } else if (phase.type === 'surface') {
-                const Rtxt = !isFinite(phase.params.R_surf) ? '∞' : `${phase.params.R_surf > 0 ? '+' : ''}${phase.params.R_surf}`;
-                paramsText = `R=${Rtxt}mm, n₁=${phase.params.n1_surf}→n₂=${phase.params.n2_surf}`;
+                const Rtxt = !isFinite(phase.params.R_surf) ? '∞' : `${phase.params.R_surf > 0 ? '+' : ''}${formatNumber(phase.params.R_surf,2)}`;
+                paramsText = `R=${Rtxt}mm, n₁=${formatNumber(phase.params.n1_surf,3)}→n₂=${formatNumber(phase.params.n2_surf,3)}`;
             } else if (phase.type === 'reflection_surface') {
-                const Rtxt = !isFinite(phase.params.R_reflect) ? '∞' : `${phase.params.R_reflect > 0 ? '+' : ''}${phase.params.R_reflect}`;
+                const Rtxt = !isFinite(phase.params.R_reflect) ? '∞' : `${phase.params.R_reflect > 0 ? '+' : ''}${formatNumber(phase.params.R_reflect,2)}`;
                 paramsText = `R_espejo=${Rtxt}mm`;
             } else if (phase.type === 'thick_lens') {
-                const R1txt = !isFinite(phase.params.R1_thick) ? '∞' : phase.params.R1_thick;
-                const R2txt = !isFinite(phase.params.R2_thick) ? '∞' : phase.params.R2_thick;
-                paramsText = `R₁=${R1txt}, n_inc=${phase.params.n_inc_thick}→n_l=${phase.params.n_lente_thick}, d=${phase.params.d_lente_thick}, R₂=${R2txt}, n_l=${phase.params.n_lente_thick}→n_s=${phase.params.n_salida_thick}`;
+                const R1txt = formatNumber(phase.params.R1_thick,2);
+                const R2txt = formatNumber(phase.params.R2_thick,2);
+                paramsText = `R₁=${R1txt}, n_inc=${formatNumber(phase.params.n_inc_thick,3)}→n_l=${formatNumber(phase.params.n_lente_thick,3)}, d=${formatNumber(phase.params.d_lente_thick,2)}, R₂=${R2txt}, n_l=${formatNumber(phase.params.n_lente_thick,3)}→n_s=${formatNumber(phase.params.n_salida_thick,3)}`;
                 paramsText = paramsText.substring(0, 60) + (paramsText.length > 60 ? "..." : ""); // Shorten for display
             }
             row.insertCell().textContent = paramsText;
