@@ -256,13 +256,6 @@ const matrixUtils = {
     }
 };
 
-// Devuelve 0 si el radio es infinito, de lo contrario realiza la división.
-function safeRadiusTerm(numerator, R) {
-    if (!isFinite(R)) return 0;
-    if (R === 0) throw new Error("Radio 'R' no puede ser cero.");
-    return numerator / R;
-}
-
 // --- Lógica de Matrices Ópticas ---
 const opticalMatrices = {
     translation: function(d, n = 1.0) {
@@ -271,37 +264,56 @@ const opticalMatrices = {
     },
     surface: function(R, n1, n2) { // Refracción
         if (n1 <= 0 || n2 <= 0) throw new Error("Índices 'n1' y 'n2' deben ser > 0.");
-        const b = safeRadiusTerm(n2 - n1, R);
-        return [[1, b], [0, 1]];
+        // safeRadiusTerm is not used here as per Python's direct (nt-ni)/R
+        const P_int = (R === Infinity || !isFinite(R) || R === 0) ? 0 : (n2 - n1) / R;
+        if (R === 0 && (n2 - n1) !== 0) throw new Error("Radio 'R' no puede ser cero para una superficie refractiva con cambio de índice.");
+        return [[1, -P_int], [0, 1]];
     },
     reflectionSurface: function(R_mirror, n_medium = 1.0) { // Reflexión
         if (n_medium <= 0) throw new Error("Índice 'n_medium' debe ser > 0.");
-        const b = safeRadiusTerm(2 * n_medium, R_mirror);
-        return [[1, b], [0, 1]];
+        // safeRadiusTerm is not used here as per Python's direct (2*ni)/R
+        const A = (R_mirror === Infinity || !isFinite(R_mirror) || R_mirror === 0) ? 0 : (2 * n_medium) / R_mirror;
+        if (R_mirror === 0 && n_medium !== 0) throw new Error("Radio 'R_mirror' no puede ser cero para un espejo en un medio con índice.");
+        return [[1, A], [0, 1]];
     },
-    thinLens: function({f, P, n = 1.0}) {
-        let c;
-        if (P !== undefined && P !== null) {
-            const power_mm_inv = P / 1000.0;
-            c = -n * power_mm_inv;
-        } else if (f !== undefined && f !== null) {
+    thinLens: function({f, P, n = 1.0}) { // n is the surrounding medium index
+        let Pow_len_mm_inv; // Power in mm^-1 (Potencia focal)
+        if (n <= 0) throw new Error("Índice 'n' del medio debe ser > 0.");
+
+        if (P !== undefined && P !== null) { // P is Power in Diopters
+            Pow_len_mm_inv = P / 1000.0;
+        } else if (f !== undefined && f !== null) { // f is focal length in mm
             if (f === 0) throw new Error("Distancia focal 'f' no puede ser cero.");
-            c = -(n / f);
+            // Power = n_medium / f (converted to mm^-1)
+            // This matches one common definition of focal power.
+            Pow_len_mm_inv = n / f;
         } else {
-            throw new Error("Debe proveer 'f' o 'P' para lente delgada.");
+            throw new Error("Debe proveer 'f' (distancia focal) o 'P' (poder) para lente delgada.");
         }
-        return [[1, 0], [c, 1]];
+        return [[1, -Pow_len_mm_inv], [0, 1]];
     },
     thickLens: function(R1, n_inc, n_lente, d_lente, R2, n_salida) {
+        if (n_inc <= 0) throw new Error("Índice 'n_inc' debe ser > 0.");
+        if (n_lente <= 0) throw new Error("Índice 'n_lente' debe ser > 0.");
+        if (n_salida <= 0) throw new Error("Índice 'n_salida' debe ser > 0.");
         if (d_lente < 0) throw new Error("Espesor 'd_lente' no puede ser negativo.");
-        if (n_lente <=0) throw new Error("Índice 'n_lente' debe ser > 0.");
 
-        const M_sup1 = this.surface(R1, n_inc, n_lente); // Refracción
-        const M_tras = this.translation(d_lente, n_lente);
-        const M_sup2 = this.surface(R2, n_lente, n_salida); // Refracción
+        // P1: Power of the first surface
+        const P1 = (R1 === Infinity || !isFinite(R1) || R1 === 0) ? 0 : (n_lente - n_inc) / R1;
+        if (R1 === 0 && (n_lente - n_inc) !== 0) throw new Error("Radio 'R1' no puede ser cero para la primera superficie con cambio de índice.");
+
+        // P2: Power of the second surface
+        const P2 = (R2 === Infinity || !isFinite(R2) || R2 === 0) ? 0 : (n_salida - n_lente) / R2;
+        if (R2 === 0 && (n_salida - n_lente) !== 0) throw new Error("Radio 'R2' no puede ser cero para la segunda superficie con cambio de índice.");
+
+        if (n_lente === 0) throw new Error("Índice 'n_lente' no puede ser cero para el cálculo de la lente gruesa.");
+
+        const M11 = 1 - ((P2 * d_lente) / n_lente);
+        const M12 = ((P1 * P2 * d_lente) / n_lente) - P1 - P2;
+        const M21 = d_lente / n_lente;
+        const M22 = 1 - ((P1 * d_lente) / n_lente);
         
-        let M_temp = matrixUtils.multiply(M_tras, M_sup1);
-        return matrixUtils.multiply(M_sup2, M_temp);
+        return [[M11, M12], [M21, M22]];
     }
 };
 
