@@ -8,6 +8,7 @@ Esta aplicación web permite crear y analizar sistemas ópticos parabiales media
 2. Abre el archivo en cualquier navegador moderno. No se necesitan dependencias adicionales ni servidores: es una página estática.
 3. Agrega fases al sistema (traslaciones, lentes, superficies reflectoras o refractoras) y la aplicación calculará automáticamente la matriz total.
 4. Opcionalmente, guarda o carga configuraciones en formato JSON con los botones correspondientes.
+5. Para indicar una superficie plana marca la casilla **R → ∞**. Estos valores de `Infinity` se conservan al exportar o importar el JSON.
 
 ## Ejecutar localmente
 
