@@ -79,7 +79,10 @@
                 <button id="showPowerCalculatorBtn" class="w-full bg-teal-500 hover:bg-teal-600 text-white font-semibold py-2 px-4 rounded-lg shadow transition duration-150 ease-in-out flex items-center justify-center">
                     <i class="fas fa-calculator mr-2"></i> Calculadora de Poder
                 </button>
-                 <div class="pt-2">
+                <button id="showSystemPropertiesBtn" class="w-full bg-purple-500 hover:bg-purple-600 text-white font-semibold py-2 px-4 rounded-lg shadow transition duration-150 ease-in-out flex items-center justify-center">
+                    <i class="fas fa-info-circle mr-2"></i> Propiedades del Sistema
+                </button>
+                <div class="pt-2">
                     <label for="showPartialMatrices" class="flex items-center space-x-2 text-sm text-slate-700">
                         <input type="checkbox" id="showPartialMatrices" class="rounded text-sky-600 focus:ring-sky-500">
                         <span>Mostrar matrices parciales</span>
@@ -187,6 +190,37 @@
                     </div>
                 <div class="mt-8 flex justify-end">
                     <button type="button" id="closePowerCalcBtn" class="px-4 py-2 text-sm font-medium text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-md border border-slate-300">Cerrar</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <div id="systemPropertiesModal" class="modal">
+        <div class="modal-content">
+            <h3 class="text-xl font-semibold mb-6 text-purple-600">Propiedades del Sistema</h3>
+            <form id="systemPropertiesForm">
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                        <label for="prop_n_obj" class="block text-sm font-medium text-slate-700 mb-1">Índice Objeto nₒ:</label>
+                        <input type="number" step="0.001" id="prop_n_obj" class="w-full p-2 border border-slate-300 rounded-md shadow-sm focus:ring-sky-500 focus:border-sky-500" value="1.0">
+                    </div>
+                    <div>
+                        <label for="prop_n_img" class="block text-sm font-medium text-slate-700 mb-1">Índice Imagen nᵃ:</label>
+                        <input type="number" step="0.001" id="prop_n_img" class="w-full p-2 border border-slate-300 rounded-md shadow-sm focus:ring-sky-500 focus:border-sky-500" value="1.0">
+                    </div>
+                    <div>
+                        <label for="prop_dist_obj" class="block text-sm font-medium text-slate-700 mb-1">Distancia Objeto (mm):</label>
+                        <input type="number" id="prop_dist_obj" class="w-full p-2 border border-slate-300 rounded-md shadow-sm focus:ring-sky-500 focus:border-sky-500" value="100">
+                    </div>
+                    <div>
+                        <label for="prop_obj_size" class="block text-sm font-medium text-slate-700 mb-1">Tamaño Objeto:</label>
+                        <input type="number" id="prop_obj_size" class="w-full p-2 border border-slate-300 rounded-md shadow-sm focus:ring-sky-500 focus:border-sky-500" value="1">
+                    </div>
+                </div>
+                <button type="button" id="calcSystemPropsBtn" class="w-full mt-4 bg-purple-500 hover:bg-purple-600 text-white font-semibold py-2 px-4 rounded-lg shadow">Calcular</button>
+                <div id="systemPropertiesResult" class="mt-4 p-3 bg-purple-50 rounded-md text-purple-700 text-sm matrix-font whitespace-pre-wrap hidden"></div>
+                <div class="mt-8 flex justify-end">
+                    <button type="button" id="closeSystemPropsBtn" class="px-4 py-2 text-sm font-medium text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-md border border-slate-300">Cerrar</button>
                 </div>
             </form>
         </div>
@@ -312,8 +346,10 @@ const powerCalculator = {
 
 
 // --- Estado de la Aplicación ---
-let opticalSystem = []; 
-let editingPhaseIndex = -1; 
+let opticalSystem = [];
+let editingPhaseIndex = -1;
+let latestTotalMatrix = [[1,0],[0,1]];
+let matrixForProperties = latestTotalMatrix;
 
 // --- Elementos del DOM ---
 const addPhaseBtn = document.getElementById('addPhaseBtn');
@@ -336,6 +372,12 @@ const closePowerCalcBtn = document.getElementById('closePowerCalcBtn');
 const powerCalcTypeSelect = document.getElementById('powerCalcType');
 const powerParamsContainer = document.getElementById('powerParamsContainer');
 const powerResultDisplay = document.getElementById('powerResultDisplay');
+
+const systemPropertiesModal = document.getElementById('systemPropertiesModal');
+const showSystemPropertiesBtn = document.getElementById('showSystemPropertiesBtn');
+const closeSystemPropsBtn = document.getElementById('closeSystemPropsBtn');
+const calcSystemPropsBtn = document.getElementById('calcSystemPropsBtn');
+const systemPropertiesResult = document.getElementById('systemPropertiesResult');
 
 const exportSystemBtn = document.getElementById('exportSystemBtn');
 const importSystemInput = document.getElementById('importSystemInput');
@@ -734,6 +776,8 @@ function calculateAndDisplayMatrices() {
             totalMatrix = matrixUtils.identity();
         }
 
+        latestTotalMatrix = totalMatrix;
+
         totalMatrixDisplay.querySelector('pre').textContent = matrixUtils.format(totalMatrix);
 
         partialMatricesListDiv.innerHTML = '';
@@ -747,10 +791,25 @@ function calculateAndDisplayMatrices() {
                 const phaseName = tableRow?.cells[1]?.textContent || `Fase ${index + 1}`;
                 const paramsText = tableRow?.cells[2]?.textContent || `Parámetros no disponibles`;
 
-                div.innerHTML = `
-                    <p class="font-semibold text-slate-700">Matriz Fase ${index + 1} (${phaseName}): ${paramsText}</p>
-                    <pre class="whitespace-pre-wrap">${matrixUtils.format(phase.matrix)}</pre>
-                `;
+                const header = document.createElement('p');
+                header.classList.add('font-semibold', 'text-slate-700');
+                header.textContent = `Matriz Fase ${index + 1} (${phaseName}): ${paramsText}`;
+
+                const pre = document.createElement('pre');
+                pre.classList.add('whitespace-pre-wrap');
+                pre.textContent = matrixUtils.format(phase.matrix);
+
+                div.appendChild(header);
+                div.appendChild(pre);
+
+                if (phase.type !== 'translation') {
+                    const btn = document.createElement('button');
+                    btn.textContent = 'Ver Propiedades';
+                    btn.classList.add('mt-2', 'bg-purple-500', 'hover:bg-purple-600', 'text-white', 'py-1', 'px-2', 'rounded', 'text-xs');
+                    btn.addEventListener('click', () => openSystemPropertiesModal(phase.matrix));
+                    div.appendChild(btn);
+                }
+
                 partialMatricesListDiv.appendChild(div);
             });
         } else {
@@ -986,9 +1045,75 @@ function handlePowerCalculation() {
 }
 
 
+function openSystemPropertiesModal(matrix = latestTotalMatrix) {
+    matrixForProperties = matrix;
+    systemPropertiesModal.style.display = 'flex';
+    systemPropertiesResult.classList.add('hidden');
+    systemPropertiesResult.textContent = '';
+}
+
+function closeSystemPropertiesModal() {
+    systemPropertiesModal.style.display = 'none';
+}
+
+function computeSystemProperties(matrix, nObj, nImg, distObj, objSize) {
+    const A = matrix[0][0], B = matrix[0][1], C = matrix[1][0], D = matrix[1][1];
+    if (B === 0) throw new Error('El elemento B de la matriz es cero.');
+    const poder = -B;
+    const foco = nObj / poder;
+    const foco_prima = nImg / poder;
+    const D_in = (nObj / B) * (1 - A);
+    const D_out = (nImg / B) * (1 - D);
+    const S = distObj - D_in;
+    if (S === 0) throw new Error('Distancia objeto igual a plano principal.');
+    const Sprima = nImg / (poder - (nObj / S));
+    const mL = -(Sprima / S);
+    const mA = -(nImg / nObj) * (S / Sprima);
+    const distVI = D_out + Sprima;
+    const lf1 = D_in + foco;
+    const lf2 = D_out + foco_prima;
+    const tamanoImg = mL * objSize;
+    return {poder,foco,foco_prima,D_in,D_out,S,Sprima,mL,mA,distVI,lf1,lf2,tamanoImg};
+}
+
+function handleSystemPropertiesCalculation() {
+    const nObj = parseFloat(document.getElementById('prop_n_obj').value);
+    const nImg = parseFloat(document.getElementById('prop_n_img').value);
+    const distObj = parseFloat(document.getElementById('prop_dist_obj').value);
+    const objSize = parseFloat(document.getElementById('prop_obj_size').value);
+    let resultText = '';
+    try {
+        const p = computeSystemProperties(matrixForProperties, nObj, nImg, distObj, objSize);
+        resultText =
+`Poder del Sistema: ${p.poder.toFixed(4)}
+foco (f): ${p.foco.toFixed(4)} mm
+foco* (f*): ${p.foco_prima.toFixed(4)} mm
+D: ${p.D_in.toFixed(4)} mm
+D*: ${p.D_out.toFixed(4)} mm
+S: ${p.S.toFixed(4)} mm
+S*: ${p.Sprima.toFixed(4)} mm
+Magnificación lateral: ${p.mL.toFixed(4)}
+Magnificación angular: ${p.mA.toFixed(4)}
+Distancia vértice-imagen: ${p.distVI.toFixed(4)} mm
+lf: ${p.lf1.toFixed(4)} mm
+lf*: ${p.lf2.toFixed(4)} mm
+Tamaño Imagen: ${p.tamanoImg.toFixed(4)}`;
+        systemPropertiesResult.classList.remove('hidden','text-red-700','bg-red-50');
+        systemPropertiesResult.classList.add('text-purple-700','bg-purple-50');
+        systemPropertiesResult.textContent = resultText;
+    } catch(e) {
+        systemPropertiesResult.textContent = 'Error: ' + e.message;
+        systemPropertiesResult.classList.remove('hidden');
+        systemPropertiesResult.classList.add('text-red-700','bg-red-50');
+    }
+}
+
 showPowerCalculatorBtn.addEventListener('click', openPowerCalculatorModal);
 closePowerCalcBtn.addEventListener('click', closePowerCalculatorModal);
 powerCalcTypeSelect.addEventListener('change', (e) => updatePowerCalculatorForm(e.target.value));
+showSystemPropertiesBtn.addEventListener('click', () => openSystemPropertiesModal());
+closeSystemPropsBtn.addEventListener('click', closeSystemPropertiesModal);
+calcSystemPropsBtn.addEventListener('click', handleSystemPropertiesCalculation);
 
 
 // --- Exportar / Importar ---
