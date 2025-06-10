@@ -276,21 +276,45 @@ const opticalMatrices = {
         if (R_mirror === 0 && n_medium !== 0) throw new Error("Radio 'R_mirror' no puede ser cero para un espejo en un medio con índice.");
         return [[1, A], [0, 1]];
     },
-    thinLens: function({f, P, n = 1.0}) { // n is the surrounding medium index
-        let Pow_len_mm_inv; // Power in mm^-1 (Potencia focal)
-        if (n <= 0) throw new Error("Índice 'n' del medio debe ser > 0.");
+    thinLens: function(params) {
+        let Pow_len; // Power in mm^-1
 
-        if (P !== undefined && P !== null) { // P is Power in Diopters
-            Pow_len_mm_inv = P / 1000.0;
-        } else if (f !== undefined && f !== null) { // f is focal length in mm
-            if (f === 0) throw new Error("Distancia focal 'f' no puede ser cero.");
-            // Power = n_medium / f (converted to mm^-1)
-            // This matches one common definition of focal power.
-            Pow_len_mm_inv = n / f;
-        } else {
-            throw new Error("Debe proveer 'f' (distancia focal) o 'P' (poder) para lente delgada.");
+        switch (params.thinLensMode) {
+            case 'radii':
+                const n_inc = params.n_inc_tl;
+                const n_lente = params.n_lente_tl;
+                const n_prima = params.n_prima_tl;
+                const R_val = params.R_tl; // Expected to be float or Infinity
+                const Rp_val = params.Rp_tl; // Expected to be float or Infinity
+
+                if (n_inc <= 0) throw new Error("Índice incidente n_inc debe ser > 0 para lente delgada (radios).");
+                if (n_lente <= 0) throw new Error("Índice del lente n_lente debe ser > 0 para lente delgada (radios).");
+                if (n_prima <= 0) throw new Error("Índice saliente n_prima debe ser > 0 para lente delgada (radios).");
+
+                const P1_tl = (R_val === Infinity || !isFinite(R_val) || R_val === 0) ? 0 : (n_lente - n_inc) / R_val;
+                if (R_val === 0 && (n_lente - n_inc) !== 0) throw new Error("Radio R no puede ser cero si los índices n_lente y n_inc difieren.");
+                const P2_tl = (Rp_val === Infinity || !isFinite(Rp_val) || Rp_val === 0) ? 0 : (n_prima - n_lente) / Rp_val;
+                if (Rp_val === 0 && (n_prima - n_lente) !== 0) throw new Error("Radio R' no puede ser cero si los índices n_prima y n_lente difieren.");
+                Pow_len = P1_tl + P2_tl;
+                break;
+            case 'object_focus':
+                const F_obj = params.F_obj_tl;
+                const n_lente_fobj = params.n_lente_fobj_tl;
+                if (n_lente_fobj <= 0) throw new Error("Índice del lente n_lente debe ser > 0 para lente delgada (foco objeto).");
+                if (F_obj === 0) throw new Error("Foco Objeto F no puede ser cero.");
+                Pow_len = n_lente_fobj / F_obj;
+                break;
+            case 'image_focus':
+                const F_img = params.F_img_tl;
+                const n_prima_fimg = params.n_prima_fimg_tl;
+                if (n_prima_fimg <= 0) throw new Error("Índice medio imagen n_img debe ser > 0 para lente delgada (foco imagen).");
+                if (F_img === 0) throw new Error("Foco Imagen F' no puede ser cero.");
+                Pow_len = n_prima_fimg / F_img;
+                break;
+            default:
+                throw new Error('Modo de lente delgada (' + params.thinLensMode + ') desconocido en opticalMatrices.thinLens.');
         }
-        return [[1, -Pow_len_mm_inv], [0, 1]];
+        return [[1, -Pow_len], [0, 1]];
     },
     thickLens: function(R1, n_inc, n_lente, d_lente, R2, n_salida) {
         if (n_inc <= 0) throw new Error("Índice 'n_inc' debe ser > 0.");
@@ -550,36 +574,94 @@ function updateParamsForm(type, params = {}) {
     paramsContainer.innerHTML = ''; 
     let fields = [];
 
-    switch (type) {
-        case 'translation':
-            fields.push(createInputField('d', 'Distancia d (mm):', 'number', params.d || '', 'ej: 50'));
-            fields.push(createInputField('n_trans', 'Índice n (medio):', 'number', params.n_trans || '1.0', 'ej: 1.0', true, '0.001'));
-            break;
-        case 'thin_lens':
-            const usePower = params.P !== undefined && params.P !== null;
-            fields.push(createCheckboxField('use_power', 'Usar Potencia (D) en lugar de f', usePower));
-            fields.push(createInputField('f', 'Distancia Focal f (mm):', 'number', params.f || '', 'ej: 100 (positivo convergente)', !usePower));
-            fields.push(createInputField('P', 'Potencia P (Dioptrías):', 'number', params.P || '', 'ej: 10', usePower));
-            
-            const usePowerCheckbox = fields[0].querySelector('#use_power');
-            const fInput = fields[1].querySelector('#f');
-            const pInput = fields[2].querySelector('#P');
-            
-            function toggleLensInputs() {
-                if (usePowerCheckbox.checked) {
-                    fInput.disabled = true; fInput.required = false; fInput.value = '';
-                    pInput.disabled = false; pInput.required = true;
-                } else {
-                    fInput.disabled = false; fInput.required = true;
-                    pInput.disabled = true; pInput.required = false; pInput.value = '';
-                }
-            }
-            usePowerCheckbox.addEventListener('change', toggleLensInputs);
-            setTimeout(toggleLensInputs,0); 
-            break;
-        case 'surface': // Refracción
-            fields.push(createRadiusField(
-                'R_surf',
+    if (type === 'thin_lens') {
+        // Mode Selector for Thin Lens
+        const modeSelectorDiv = document.createElement('div');
+        modeSelectorDiv.classList.add('mb-4');
+        const modeLabel = document.createElement('label');
+        modeLabel.htmlFor = 'thinLensMode';
+        modeLabel.textContent = 'Modo de Cálculo Lente Delgada:';
+        modeLabel.classList.add('block', 'text-sm', 'font-medium', 'text-slate-700', 'mb-1');
+
+        const thinLensModeSelect = document.createElement('select');
+        thinLensModeSelect.id = 'thinLensMode';
+        thinLensModeSelect.name = 'thinLensMode';
+        thinLensModeSelect.classList.add('w-full', 'p-2', 'border', 'border-slate-300', 'rounded-md', 'shadow-sm', 'focus:ring-sky-500', 'focus:border-sky-500');
+
+        const options = [
+            { value: 'radii', text: 'Radios, Índices (n_inc, n_lente, n_salida)' },
+            { value: 'object_focus', text: 'Foco Objeto (F), Índice Lente (n_lente)' },
+            { value: 'image_focus', text: 'Foco Imagen (F\'), Índice Salida (n_salida)' }
+        ];
+
+        options.forEach(opt => {
+            const optionEl = document.createElement('option');
+            optionEl.value = opt.value;
+            optionEl.textContent = opt.text;
+            thinLensModeSelect.appendChild(optionEl);
+        });
+
+        modeSelectorDiv.appendChild(modeLabel);
+        modeSelectorDiv.appendChild(thinLensModeSelect);
+        paramsContainer.appendChild(modeSelectorDiv);
+
+        // Parameter Divs for different modes
+        const radiiParamsDiv = document.createElement('div');
+        radiiParamsDiv.id = 'radiiParamsDiv';
+        const objectFocusParamsDiv = document.createElement('div');
+        objectFocusParamsDiv.id = 'objectFocusParamsDiv';
+        const imageFocusParamsDiv = document.createElement('div');
+        imageFocusParamsDiv.id = 'imageFocusParamsDiv';
+
+        // Fields for "radii" mode
+        radiiParamsDiv.appendChild(createInputField('n_inc_tl', 'Índice Incidente n_inc:', 'number', params.n_inc_tl || '1.0', 'ej: 1.0', true, '0.001'));
+        radiiParamsDiv.appendChild(createInputField('n_lente_tl', 'Índice de la Lente n_lente:', 'number', params.n_lente_tl || '1.5', 'ej: 1.5', true, '0.001'));
+        radiiParamsDiv.appendChild(createInputField('n_prima_tl', 'Índice Saliente n_prima:', 'number', params.n_prima_tl || '1.0', 'ej: 1.0', true, '0.001'));
+        radiiParamsDiv.appendChild(createRadiusField('R_tl', 'Radio Frontal R (mm):', params.R_tl, 'ej: 100', true, 'any', params.R_tl_inf));
+        radiiParamsDiv.appendChild(createRadiusField('Rp_tl', "Radio Posterior R' (mm):", params.Rp_tl, 'ej: -100', true, 'any', params.Rp_tl_inf));
+
+        // Fields for "object_focus" mode
+        objectFocusParamsDiv.appendChild(createInputField('F_obj_tl', 'Foco Objeto F (mm):', 'number', params.F_obj_tl || '', 'ej: 100', true));
+        objectFocusParamsDiv.appendChild(createInputField('n_lente_fobj_tl', 'Índice de la Lente n_lente:', 'number', params.n_lente_fobj_tl || '1.5', 'ej: 1.5', true, '0.001'));
+
+        // Fields for "image_focus" mode
+        imageFocusParamsDiv.appendChild(createInputField('F_img_tl', "Foco Imagen F' (mm):", 'number', params.F_img_tl || '', 'ej: 100', true));
+        imageFocusParamsDiv.appendChild(createInputField('n_prima_fimg_tl', 'Índice Medio Imagen n_img:', 'number', params.n_prima_fimg_tl || '1.0', 'ej: 1.0', true, '0.001'));
+
+        paramsContainer.appendChild(radiiParamsDiv);
+        paramsContainer.appendChild(objectFocusParamsDiv);
+        paramsContainer.appendChild(imageFocusParamsDiv);
+
+        thinLensModeSelect.addEventListener('change', function() {
+            radiiParamsDiv.style.display = (this.value === 'radii') ? 'block' : 'none';
+            objectFocusParamsDiv.style.display = (this.value === 'object_focus') ? 'block' : 'none';
+            imageFocusParamsDiv.style.display = (this.value === 'image_focus') ? 'block' : 'none';
+            removeValidationErrors(phaseForm);
+        });
+
+        if (params.thinLensMode) {
+            thinLensModeSelect.value = params.thinLensMode;
+        } else {
+            // Ensure default 'radii' is selected if no mode is in params
+            thinLensModeSelect.value = 'radii';
+        }
+        // Trigger change to set initial visibility
+        thinLensModeSelect.dispatchEvent(new Event('change'));
+
+    } else { // Existing logic for other phase types
+        switch (type) {
+            case 'translation':
+                fields.push(createInputField('d', 'Distancia d (mm):', 'number', params.d || '', 'ej: 50'));
+                fields.push(createInputField('n_trans', 'Índice n (medio):', 'number', params.n_trans || '1.0', 'ej: 1.0', true, '0.001'));
+                break;
+            // Note: 'thin_lens' case is now handled above. If it were here, it would be an old version.
+            // For safety, ensuring it's not duplicated if someone merges this with an old version.
+            // case 'thin_lens':
+            //    // This block should ideally be empty or removed if the 'if (type === 'thin_lens')' handles it.
+            //    break;
+            case 'surface': // Refracción
+                fields.push(createRadiusField(
+                    'R_surf',
                 'Radio de Curvatura R (mm):',
                 (typeof params.R_surf === 'number' && isFinite(params.R_surf)) ? params.R_surf : '',
                 'ej: 100 (positivo convexo)',
@@ -690,13 +772,28 @@ function validateAndGetParams() {
             params.n_trans = getValidatedFloat('n_trans', 'Índice n', false, false); 
             break;
         case 'thin_lens':
-            const usePower = document.getElementById('use_power').checked;
-            if (usePower) {
-                params.P = getValidatedFloat('P', 'Potencia P', true, true); 
-                if (params.P === null && document.getElementById('P').required) isValid = false;
-            } else {
-                params.f = getValidatedFloat('f', 'Distancia Focal f', false, true); 
-                 if (params.f === null && document.getElementById('f').required) isValid = false;
+            const thinLensMode = document.getElementById('thinLensMode').value;
+            params.thinLensMode = thinLensMode;
+            switch (thinLensMode) {
+                case 'radii':
+                    params.n_inc_tl = getValidatedFloat('n_inc_tl', 'Índice Incidente n_inc (TL)', false, false);
+                    params.n_lente_tl = getValidatedFloat('n_lente_tl', 'Índice Lente n_lente (TL)', false, false);
+                    params.n_prima_tl = getValidatedFloat('n_prima_tl', 'Índice Saliente n_prima (TL)', false, false);
+                    params.R_tl = getValidatedFloat('R_tl', 'Radio Frontal R (TL)', false, true);
+                    params.Rp_tl = getValidatedFloat('Rp_tl', "Radio Posterior R' (TL)", false, true);
+                    break;
+                case 'object_focus':
+                    params.F_obj_tl = getValidatedFloat('F_obj_tl', 'Foco Objeto F (TL)', false, true);
+                    params.n_lente_fobj_tl = getValidatedFloat('n_lente_fobj_tl', 'Índice Lente n_lente (F_obj TL)', false, false);
+                    break;
+                case 'image_focus':
+                    params.F_img_tl = getValidatedFloat('F_img_tl', "Foco Imagen F' (TL)", false, true);
+                    params.n_prima_fimg_tl = getValidatedFloat('n_prima_fimg_tl', 'Índice Medio Imagen n_img (F_img TL)', false, false);
+                    break;
+                default:
+                    console.error('Unknown thin lens mode:', thinLensMode);
+                    isValid = false;
+                    break;
             }
             break;
         case 'surface': // Refracción
@@ -768,10 +865,29 @@ function renderPhaseList() {
             if (phase.type === 'translation') {
                 paramsText = `d=${phase.params.d}mm, n=${phase.params.n_trans}`;
             } else if (phase.type === 'thin_lens') {
-                if (phase.params.f !== undefined && phase.params.f !== null) {
-                    paramsText = `f=${phase.params.f > 0 ? '+' : ''}${phase.params.f}mm`;
-                } else if (phase.params.P !== undefined && phase.params.P !== null) {
-                     paramsText = `P=${phase.params.P > 0 ? '+' : ''}${phase.params.P}D`;
+                switch (phase.params.thinLensMode) {
+                    case 'radii':
+                        const R_text_tl = (!isFinite(phase.params.R_tl) && phase.params.R_tl !== null) ? '∞' : (phase.params.R_tl > 0 ? '+' : '') + phase.params.R_tl;
+                        const Rp_text_tl = (!isFinite(phase.params.Rp_tl) && phase.params.Rp_tl !== null) ? '∞' : (phase.params.Rp_tl > 0 ? '+' : '') + phase.params.Rp_tl;
+                        paramsText = `Modo: Radios; R=${R_text_tl}mm, R'=${Rp_text_tl}mm, nᵢ=${phase.params.n_inc_tl}, nₗ=${phase.params.n_lente_tl}, nₚ=${phase.params.n_prima_tl}`;
+                        break;
+                    case 'object_focus':
+                        const F_obj_text_tl = (phase.params.F_obj_tl > 0 ? '+' : '') + phase.params.F_obj_tl;
+                        paramsText = `Modo: Foco Obj; F=${F_obj_text_tl}mm, nₗ=${phase.params.n_lente_fobj_tl}`;
+                        break;
+                    case 'image_focus':
+                        const F_img_text_tl = (phase.params.F_img_tl > 0 ? '+' : '') + phase.params.F_img_tl;
+                        paramsText = `Modo: Foco Imagen; F'=${F_img_text_tl}mm, n'=${phase.params.n_prima_fimg_tl}`;
+                        break;
+                    default:
+                        paramsText = 'Lente Delgada (Modo Desconocido)';
+                        // Fallback for old data
+                        if (phase.params.f !== undefined && phase.params.f !== null) {
+                            paramsText = `f=${phase.params.f > 0 ? '+' : ''}${phase.params.f}mm (Modo anterior)`;
+                        } else if (phase.params.P !== undefined && phase.params.P !== null) {
+                            paramsText = `P=${phase.params.P > 0 ? '+' : ''}${phase.params.P}D (Modo anterior)`;
+                        }
+                        break;
                 }
             } else if (phase.type === 'surface') {
                 const Rtxt = !isFinite(phase.params.R_surf) ? '∞' : `${phase.params.R_surf > 0 ? '+' : ''}${phase.params.R_surf}`;
