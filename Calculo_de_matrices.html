@@ -222,6 +222,13 @@ const matrixUtils = {
     }
 };
 
+// Devuelve 0 si el radio es infinito, de lo contrario realiza la división.
+function safeRadiusTerm(numerator, R) {
+    if (!isFinite(R)) return 0;
+    if (R === 0) throw new Error("Radio 'R' no puede ser cero.");
+    return numerator / R;
+}
+
 // --- Lógica de Matrices Ópticas ---
 const opticalMatrices = {
     translation: function(d, n = 1.0) {
@@ -229,17 +236,13 @@ const opticalMatrices = {
         return [[1, 0], [d/n, 1]];
     },
     surface: function(R, n1, n2) { // Refracción
-        if (!isFinite(R)) return [[1, 0], [0, 1]]; // Superficie plana
-        if (R === 0) throw new Error("Radio 'R' no puede ser cero para superficie esférica de refracción.");
         if (n1 <= 0 || n2 <= 0) throw new Error("Índices 'n1' y 'n2' deben ser > 0.");
-        const b = (n2 - n1) / R;
+        const b = safeRadiusTerm(n2 - n1, R);
         return [[1, b], [0, 1]];
     },
     reflectionSurface: function(R_mirror, n_medium = 1.0) { // Reflexión
-        if (!isFinite(R_mirror)) return [[1, 0], [0, 1]]; // Espejo plano
-        if (R_mirror === 0) throw new Error("Radio 'R' no puede ser cero para espejo esférico.");
         if (n_medium <= 0) throw new Error("Índice 'n_medium' debe ser > 0.");
-        const b = (2 * n_medium) / R_mirror;
+        const b = safeRadiusTerm(2 * n_medium, R_mirror);
         return [[1, b], [0, 1]];
     },
     thinLens: function({f, P, n = 1.0}) {
