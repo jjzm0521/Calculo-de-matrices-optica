@@ -222,6 +222,13 @@ const matrixUtils = {
     }
 };
 
+// Devuelve 0 si el radio es infinito, de lo contrario realiza la división.
+function safeRadiusTerm(numerator, R) {
+    if (!isFinite(R)) return 0;
+    if (R === 0) throw new Error("Radio 'R' no puede ser cero.");
+    return numerator / R;
+}
+
 // --- Lógica de Matrices Ópticas ---
 const opticalMatrices = {
     translation: function(d, n = 1.0) {
@@ -229,17 +236,13 @@ const opticalMatrices = {
         return [[1, 0], [d/n, 1]];
     },
     surface: function(R, n1, n2) { // Refracción
-        if (!isFinite(R)) return [[1, 0], [0, 1]]; // Superficie plana
-        if (R === 0) throw new Error("Radio 'R' no puede ser cero para superficie esférica de refracción.");
         if (n1 <= 0 || n2 <= 0) throw new Error("Índices 'n1' y 'n2' deben ser > 0.");
-        const b = (n2 - n1) / R;
+        const b = safeRadiusTerm(n2 - n1, R);
         return [[1, b], [0, 1]];
     },
     reflectionSurface: function(R_mirror, n_medium = 1.0) { // Reflexión
-        if (!isFinite(R_mirror)) return [[1, 0], [0, 1]]; // Espejo plano
-        if (R_mirror === 0) throw new Error("Radio 'R' no puede ser cero para espejo esférico.");
         if (n_medium <= 0) throw new Error("Índice 'n_medium' debe ser > 0.");
-        const b = (2 * n_medium) / R_mirror;
+        const b = safeRadiusTerm(2 * n_medium, R_mirror);
         return [[1, b], [0, 1]];
     },
     thinLens: function({f, P, n = 1.0}) {
@@ -459,6 +462,36 @@ function createCheckboxField(id, label, checked = false) {
     return div;
 }
 
+// Combina un campo numérico de radio con una casilla para indicar R infinito
+function createRadiusField(id, label, value = '', placeholder = '', required = true, step = 'any', isInfinite = false) {
+    const container = document.createElement('div');
+    container.classList.add('mb-3');
+
+    const numField = createInputField(id, label, 'number', isInfinite ? '' : value, placeholder, required && !isInfinite, step);
+    const checkboxDiv = createCheckboxField(`${id}_inf`, 'Superficie plana (R → ∞)', isInfinite);
+
+    const checkbox = checkboxDiv.querySelector('input');
+    const input = numField.querySelector('input');
+
+    function toggle() {
+        if (checkbox.checked) {
+            input.disabled = true;
+            input.required = false;
+            input.value = '';
+        } else {
+            input.disabled = false;
+            if (required) input.required = true;
+        }
+    }
+
+    checkbox.addEventListener('change', toggle);
+    toggle();
+
+    container.appendChild(numField);
+    container.appendChild(checkboxDiv);
+    return container;
+}
+
 
 function updateParamsForm(type, params = {}) {
     paramsContainer.innerHTML = ''; 
@@ -492,22 +525,22 @@ function updateParamsForm(type, params = {}) {
             setTimeout(toggleLensInputs,0); 
             break;
         case 'surface': // Refracción
-            fields.push(createInputField('R_surf', 'Radio de Curvatura R (mm):', 'number', params.R_surf || '', 'ej: 100 (positivo convexo)'));
+            fields.push(createRadiusField('R_surf', 'Radio de Curvatura R (mm):', params.R_surf || '', 'ej: 100 (positivo convexo)', true, 'any', !isFinite(params.R_surf)));
             fields.push(createInputField('n1_surf', 'Índice Incidente n₁:', 'number', params.n1_surf || '1.0', 'ej: 1.0', true, '0.001'));
             fields.push(createInputField('n2_surf', 'Índice Transmitido n₂:', 'number', params.n2_surf || '1.5', 'ej: 1.5', true, '0.001'));
             break;
         case 'reflection_surface': // Reflexión
-            fields.push(createInputField('R_reflect', 'Radio Curvatura Espejo R (mm):', 'number', params.R_reflect || '', 'ej: 200 (R>0 cóncavo)'));
+            fields.push(createRadiusField('R_reflect', 'Radio Curvatura Espejo R (mm):', params.R_reflect || '', 'ej: 200 (R>0 cóncavo)', true, 'any', !isFinite(params.R_reflect)));
             // n_medium is not directly in the matrix [[1,0],[-2/R, -1]] but good for consistency if we extend.
             // For now, the matrix form used does not require n_medium directly.
             // fields.push(createInputField('n_medium_reflect', 'Índice del Medio n:', 'number', params.n_medium_reflect || '1.0', 'ej: 1.0', true, '0.001'));
             break;
-        case 'thick_lens': 
-            fields.push(createInputField('R1_thick', 'Radio Superficie Frontal R₁ (mm):', 'number', params.R1_thick || '', 'ej: 100'));
+        case 'thick_lens':
+            fields.push(createRadiusField('R1_thick', 'Radio Superficie Frontal R₁ (mm):', params.R1_thick || '', 'ej: 100', true, 'any', !isFinite(params.R1_thick)));
             fields.push(createInputField('n_inc_thick', 'Índice Incidente n_inc:', 'number', params.n_inc_thick || '1.0', 'ej: 1.0', true, '0.001'));
             fields.push(createInputField('n_lente_thick', 'Índice de la Lente n_lente:', 'number', params.n_lente_thick || '1.5', 'ej: 1.5', true, '0.001'));
             fields.push(createInputField('d_lente_thick', 'Espesor Lente d_lente (mm):', 'number', params.d_lente_thick || '', 'ej: 5'));
-            fields.push(createInputField('R2_thick', 'Radio Superficie Posterior R₂ (mm):', 'number', params.R2_thick || '', 'ej: -100'));
+            fields.push(createRadiusField('R2_thick', 'Radio Superficie Posterior R₂ (mm):', params.R2_thick || '', 'ej: -100', true, 'any', !isFinite(params.R2_thick)));
             fields.push(createInputField('n_salida_thick', 'Índice de Salida n_salida:', 'number', params.n_salida_thick || '1.0', 'ej: 1.0', true, '0.001'));
             break;
     }
@@ -522,12 +555,17 @@ function validateAndGetParams() {
 
     function getValidatedFloat(id, fieldName, allowNullOrZero = false, allowNegative = true) {
         const inputElement = document.getElementById(id);
-        if (!inputElement || inputElement.disabled) { 
+        const infCheckbox = document.getElementById(id + '_inf');
+        if (!inputElement || inputElement.disabled) {
              if (inputElement && inputElement.required) { 
                 showFieldError(inputElement, `${fieldName} es requerido pero está deshabilitado.`);
                 isValid = false;
              }
             return null;
+        }
+
+        if (infCheckbox && infCheckbox.checked) {
+            return Infinity;
         }
 
         const valueStr = inputElement.value.trim();
@@ -651,11 +689,15 @@ function renderPhaseList() {
                      paramsText = `P=${phase.params.P > 0 ? '+' : ''}${phase.params.P}D`;
                 }
             } else if (phase.type === 'surface') {
-                paramsText = `R=${phase.params.R_surf > 0 ? '+' : ''}${phase.params.R_surf}mm, n₁=${phase.params.n1_surf}→n₂=${phase.params.n2_surf}`;
+                const Rtxt = !isFinite(phase.params.R_surf) ? '∞' : `${phase.params.R_surf > 0 ? '+' : ''}${phase.params.R_surf}`;
+                paramsText = `R=${Rtxt}mm, n₁=${phase.params.n1_surf}→n₂=${phase.params.n2_surf}`;
             } else if (phase.type === 'reflection_surface') {
-                paramsText = `R_espejo=${phase.params.R_reflect > 0 ? '+' : ''}${phase.params.R_reflect}mm`;
+                const Rtxt = !isFinite(phase.params.R_reflect) ? '∞' : `${phase.params.R_reflect > 0 ? '+' : ''}${phase.params.R_reflect}`;
+                paramsText = `R_espejo=${Rtxt}mm`;
             } else if (phase.type === 'thick_lens') {
-                paramsText = `R₁=${phase.params.R1_thick}, n_inc=${phase.params.n_inc_thick}→n_l=${phase.params.n_lente_thick}, d=${phase.params.d_lente_thick}, R₂=${phase.params.R2_thick}, n_l=${phase.params.n_lente_thick}→n_s=${phase.params.n_salida_thick}`;
+                const R1txt = !isFinite(phase.params.R1_thick) ? '∞' : phase.params.R1_thick;
+                const R2txt = !isFinite(phase.params.R2_thick) ? '∞' : phase.params.R2_thick;
+                paramsText = `R₁=${R1txt}, n_inc=${phase.params.n_inc_thick}→n_l=${phase.params.n_lente_thick}, d=${phase.params.d_lente_thick}, R₂=${R2txt}, n_l=${phase.params.n_lente_thick}→n_s=${phase.params.n_salida_thick}`;
                 paramsText = paramsText.substring(0, 60) + (paramsText.length > 60 ? "..." : ""); // Shorten for display
             }
             row.insertCell().textContent = paramsText;
@@ -849,23 +891,23 @@ function updatePowerCalculatorForm(type, params = {}) {
 
     switch(type) {
         case 'interface': // Refracción
-            fields.push(createInputField('power_R_surf', 'Radio R (mm):', 'number', params.R_surf || '', 'ej: 100'));
+            fields.push(createRadiusField('power_R_surf', 'Radio R (mm):', params.R_surf || '', 'ej: 100', true, 'any', !isFinite(params.R_surf)));
             fields.push(createInputField('power_n1_surf', 'Índice n₁:', 'number', params.n1_surf || '1.0', 'ej: 1.0', true, '0.001'));
             fields.push(createInputField('power_n2_surf', 'Índice n₂:', 'number', params.n2_surf || '1.5', 'ej: 1.5', true, '0.001'));
             break;
         case 'mirror_power': // Reflexión
-            fields.push(createInputField('power_R_mirror', 'Radio Espejo R (mm):', 'number', params.R_mirror || '', 'ej: 200 (R>0 cóncavo)'));
+            fields.push(createRadiusField('power_R_mirror', 'Radio Espejo R (mm):', params.R_mirror || '', 'ej: 200 (R>0 cóncavo)', true, 'any', !isFinite(params.R_mirror)));
             fields.push(createInputField('power_n_medium_mirror', 'Índice del Medio n:', 'number', params.n_medium_mirror || '1.0', 'ej: 1.0', true, '0.001'));
             break;
         case 'thin_lens_power':
             fields.push(createInputField('power_f_tl', 'Distancia Focal f (mm):', 'number', params.f_tl || '', 'ej: 100'));
             break;
         case 'thick_lens_power':
-            fields.push(createInputField('power_R1_thick_p', 'Radio R₁ (mm):', 'number', params.R1_thick_p || '', 'ej: 100'));
+            fields.push(createRadiusField('power_R1_thick_p', 'Radio R₁ (mm):', params.R1_thick_p || '', 'ej: 100', true, 'any', !isFinite(params.R1_thick_p)));
             fields.push(createInputField('power_n_aire_thick_p', 'Índice Aire/Incidente n_aire:', 'number', params.n_aire_thick_p || '1.0', 'ej: 1.0', true, '0.001'));
             fields.push(createInputField('power_n_vidrio_thick_p', 'Índice Vidrio n_vidrio:', 'number', params.n_vidrio_thick_p || '1.5', 'ej: 1.5', true, '0.001'));
             fields.push(createInputField('power_d_lente_thick_p', 'Espesor d (mm):', 'number', params.d_lente_thick_p || '', 'ej: 5'));
-            fields.push(createInputField('power_R2_thick_p', 'Radio R₂ (mm):', 'number', params.R2_thick_p || '', 'ej: -100'));
+            fields.push(createRadiusField('power_R2_thick_p', 'Radio R₂ (mm):', params.R2_thick_p || '', 'ej: -100', true, 'any', !isFinite(params.R2_thick_p)));
             break;
     }
     
@@ -890,7 +932,12 @@ function handlePowerCalculation() {
 
     function getPowerValidatedFloat(id, fieldName, allowNullOrZero = false, allowNegative = true) {
         const inputElement = document.getElementById(id);
-         if (!inputElement) return null; 
+        const infCheckbox = document.getElementById(id + '_inf');
+        if (!inputElement) return null;
+        if (infCheckbox && infCheckbox.checked) {
+            return Infinity;
+        }
+
         const valueStr = inputElement.value.trim();
         if (valueStr === '') {
             showFieldError(inputElement, `${fieldName} es requerido.`);
@@ -997,7 +1044,9 @@ exportSystemBtn.addEventListener('click', () => {
         showAlert('Exportar Sistema', 'No hay nada que exportar. Agregue fases al sistema.');
         return;
     }
-    const systemJSON = JSON.stringify(opticalSystem.map(phase => ({type: phase.type, params: phase.params})), null, 2); 
+    const systemJSON = JSON.stringify(opticalSystem.map(phase => ({type: phase.type, params: phase.params})), (k, v) => {
+        return (typeof v === 'number' && !isFinite(v)) ? 'Infinity' : v;
+    }, 2);
     const blob = new Blob([systemJSON], {type: 'application/json'});
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
@@ -1016,7 +1065,7 @@ importSystemInput.addEventListener('change', (event) => {
         const reader = new FileReader();
         reader.onload = (e) => {
             try {
-                const importedPhases = JSON.parse(e.target.result);
+                const importedPhases = JSON.parse(e.target.result, (k, v) => v === 'Infinity' ? Infinity : v);
                 if (Array.isArray(importedPhases)) {
                     const isValidImport = importedPhases.every(phase => 
                         phase.hasOwnProperty('type') && phase.hasOwnProperty('params')
