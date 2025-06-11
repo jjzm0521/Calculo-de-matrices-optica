@@ -324,7 +324,8 @@ const opticalMatrices = {
         return [[new Decimal(1), new Decimal(0)], [d_dec.dividedBy(n_dec), new Decimal(1)]];
     },
 surface: function(R, n1, n2) { // Refracción
-    const R_dec = new Decimal(R);
+    const R_actual = (R === null || R === Infinity || String(R).toLowerCase() === "inf") ? Infinity : R;
+    const R_dec = new Decimal(R_actual);
     const n1_dec = new Decimal(n1);
     const n2_dec = new Decimal(n2);
 
@@ -336,22 +337,29 @@ surface: function(R, n1, n2) { // Refracción
     }
 
     let P_int_dec;
-    if (R_dec.isZero()) {
+    if (R_dec.isZero()) { // This condition implies R is 0, not Infinity.
         P_int_dec = new Decimal(0);
-    } else {
+    } else if (!R_dec.isFinite()){ // R is Infinity
+        P_int_dec = new Decimal(0);
+    }
+    else {
         P_int_dec = n2_dec.minus(n1_dec).dividedBy(R_dec);
     }
     return [[new Decimal(1), P_int_dec.negated()], [new Decimal(0), new Decimal(1)]];
 },
 reflectionSurface: function(R_mirror, n_medium = 1.0) { // Reflexión
-    const R_mirror_dec = new Decimal(R_mirror);
+    const R_mirror_actual = (R_mirror === null || R_mirror === Infinity || String(R_mirror).toLowerCase() === "inf") ? Infinity : R_mirror;
+    const R_mirror_dec = new Decimal(R_mirror_actual);
     const n_medium_dec = new Decimal(n_medium);
 
     if (n_medium_dec.isNegative() || n_medium_dec.isZero()) {
         throw new Error("Índice 'n_medium' debe ser > 0.");
     }
-    if (R_mirror_dec.isZero()) {
+    if (R_mirror_dec.isZero()) { // R_mirror = 0 is an error, Infinity is not for this check
         throw new Error("Radio 'R_mirror' no puede ser cero para un espejo, ya que implicaría poder infinito.");
+    }
+    if (!R_mirror_dec.isFinite()) { // R_mirror is Infinity, power is 0
+        return [[new Decimal(1), new Decimal(0)], [new Decimal(0), new Decimal(1)]];
     }
     const P_reflect_term_dec = new Decimal(2).times(n_medium_dec).dividedBy(R_mirror_dec);
     return [[new Decimal(1), P_reflect_term_dec], [new Decimal(0), new Decimal(1)]];
@@ -375,8 +383,10 @@ thinLens: function({f, P, n_surrounding = 1.0, R1, R2, n1_incident, nl_lens, n2_
         // n_s_dec (n_surrounding) already validated positive
         Pow_len_mm_inv_dec = n_s_dec.dividedBy(f_dec);
     } else if (R1 !== undefined && R2 !== undefined && n1_incident !== undefined && nl_lens !== undefined && n2_exit !== undefined) {
-        const R1_dec = (R1 === "inf" || R1 === Infinity) ? new Decimal(Infinity) : new Decimal(R1);
-        const R2_dec = (R2 === "inf" || R2 === Infinity) ? new Decimal(Infinity) : new Decimal(R2);
+        const R1_actual = (R1 === null || R1 === Infinity || String(R1).toLowerCase() === "inf") ? Infinity : R1;
+        const R1_dec = new Decimal(R1_actual);
+        const R2_actual = (R2 === null || R2 === Infinity || String(R2).toLowerCase() === "inf") ? Infinity : R2;
+        const R2_dec = new Decimal(R2_actual);
         const n1_incident_dec = new Decimal(n1_incident);
         const nl_lens_dec = new Decimal(nl_lens);
         const n2_exit_dec = new Decimal(n2_exit);
@@ -419,11 +429,13 @@ thinLens: function({f, P, n_surrounding = 1.0, R1, R2, n1_incident, nl_lens, n2_
     return [[new Decimal(1), Pow_len_mm_inv_dec.negated()], [new Decimal(0), new Decimal(1)]];
 },
     thickLens: function(R1, n_inc, n_lente, d_lente, R2, n_salida) {
-        const R1_dec = new Decimal(R1);
+        const R1_actual = (R1 === null || R1 === Infinity || String(R1).toLowerCase() === "inf") ? Infinity : R1;
+        const R1_dec = new Decimal(R1_actual);
         const n_inc_dec = new Decimal(n_inc);
         const n_lente_dec = new Decimal(n_lente);
         const d_lente_dec = new Decimal(d_lente);
-        const R2_dec = new Decimal(R2);
+        const R2_actual = (R2 === null || R2 === Infinity || String(R2).toLowerCase() === "inf") ? Infinity : R2;
+        const R2_dec = new Decimal(R2_actual);
         const n_salida_dec = new Decimal(n_salida);
 
         if (n_inc_dec.isNegative() || n_inc_dec.isZero()) throw new Error("Índice 'n_inc' debe ser > 0.");
