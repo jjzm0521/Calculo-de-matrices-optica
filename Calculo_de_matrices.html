@@ -6,6 +6,7 @@
     <title>Sistema Óptico Interactivo</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Roboto+Mono:wght@400;500&display=swap" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/decimal.js@latest/decimal.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/js/all.min.js"></script>
     <style>
         body {
@@ -202,19 +203,19 @@
                 <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div>
                         <label for="prop_n_obj" class="block text-sm font-medium text-slate-700 mb-1">Índice Objeto nₒ:</label>
-                        <input type="number" step="0.001" id="prop_n_obj" class="w-full p-2 border border-slate-300 rounded-md shadow-sm focus:ring-sky-500 focus:border-sky-500" value="1.0">
+                        <input type="number" step="0.0000000001" id="prop_n_obj" class="w-full p-2 border border-slate-300 rounded-md shadow-sm focus:ring-sky-500 focus:border-sky-500" value="1.0">
                     </div>
                     <div>
                         <label for="prop_n_img" class="block text-sm font-medium text-slate-700 mb-1">Índice Imagen nᵃ:</label>
-                        <input type="number" step="0.001" id="prop_n_img" class="w-full p-2 border border-slate-300 rounded-md shadow-sm focus:ring-sky-500 focus:border-sky-500" value="1.0">
+                        <input type="number" step="0.0000000001" id="prop_n_img" class="w-full p-2 border border-slate-300 rounded-md shadow-sm focus:ring-sky-500 focus:border-sky-500" value="1.0">
                     </div>
                     <div>
                         <label for="prop_dist_obj" class="block text-sm font-medium text-slate-700 mb-1">Distancia Objeto (mm):</label>
-                        <input type="number" id="prop_dist_obj" class="w-full p-2 border border-slate-300 rounded-md shadow-sm focus:ring-sky-500 focus:border-sky-500" value="100">
+                        <input type="number" step="0.0000000001" id="prop_dist_obj" class="w-full p-2 border border-slate-300 rounded-md shadow-sm focus:ring-sky-500 focus:border-sky-500" value="100">
                     </div>
                     <div>
                         <label for="prop_obj_size" class="block text-sm font-medium text-slate-700 mb-1">Tamaño Objeto:</label>
-                        <input type="number" id="prop_obj_size" class="w-full p-2 border border-slate-300 rounded-md shadow-sm focus:ring-sky-500 focus:border-sky-500" value="1">
+                        <input type="number" step="0.0000000001" id="prop_obj_size" class="w-full p-2 border border-slate-300 rounded-md shadow-sm focus:ring-sky-500 focus:border-sky-500" value="1">
                     </div>
                 </div>
                 <button type="button" id="calcSystemPropsBtn" class="w-full mt-4 bg-purple-500 hover:bg-purple-600 text-white font-semibold py-2 px-4 rounded-lg shadow">Calcular</button>
@@ -234,166 +235,230 @@
                 </div>
         </div>
     </div>
-
-
 <script>
+Decimal.set({ precision: 30 });
 // --- Funciones de utilidad para matrices (equivalente a numpy) ---
 
-function formatNumber(num, precision = 2) {
+function formatNumber(num, precision = 5) {
     if (num === null || num === undefined) return 'N/A';
-    if (num === Infinity || num === -Infinity) return '∞';
-    const numFloat = parseFloat(num);
-    if (isNaN(numFloat)) {
-        if (String(num).toLowerCase() === "inf" || String(num).toLowerCase() === "infinity") return '∞';
+
+    let val_dec;
+
+    if (num instanceof Decimal) {
+        val_dec = num;
+    } else if (typeof num === 'number' && !isNaN(num)) { // JS primitive numbers (includes Infinity, -Infinity)
+         if (!isFinite(num)) return num > 0 ? '∞' : '-∞';
+         val_dec = new Decimal(num);
+    } else if (typeof num === 'string') {
+        const lowerNumStr = num.toLowerCase();
+        if (lowerNumStr === "inf" || lowerNumStr === "infinity") return '∞';
+        if (lowerNumStr === "-inf" || lowerNumStr === "-infinity") return '-∞';
+        // Attempt to convert string to Decimal, handles "NaN" string too
+        val_dec = new Decimal(num);
+    } else {
+        // If it's some other type or unhandled case
         return String(num);
     }
-    return numFloat.toFixed(precision);
+
+    if (val_dec.isNaN()) return 'NaN'; // decimal.js NaN
+    if (!val_dec.isFinite()) { // Handles Infinity and -Infinity from decimal.js
+        return val_dec.isNegative() ? '-∞' : '∞';
+    }
+
+    // Use Decimal's toFixed for rounding, then parseFloat trick for trailing zeros.
+    const fixedPrecisionString = val_dec.toFixed(precision);
+    return String(parseFloat(fixedPrecisionString));
 }
 
 const matrixUtils = {
     multiply: function(A, B) {
+        // A[i][j] and B[i][j] are expected to be Decimal objects.
+        const C00 = A[0][0].times(B[0][0]).plus(A[0][1].times(B[1][0]));
+        const C01 = A[0][0].times(B[0][1]).plus(A[0][1].times(B[1][1]));
+        const C10 = A[1][0].times(B[0][0]).plus(A[1][1].times(B[1][0]));
+        const C11 = A[1][0].times(B[0][1]).plus(A[1][1].times(B[1][1]));
+
         return [
-            [A[0][0]*B[0][0] + A[0][1]*B[1][0], A[0][0]*B[0][1] + A[0][1]*B[1][1]],
-            [A[1][0]*B[0][0] + A[1][1]*B[1][0], A[1][0]*B[0][1] + A[1][1]*B[1][1]]
+            [C00, C01],
+            [C10, C11]
         ];
     },
     identity: function() {
-        return [[1, 0], [0, 1]];
+        return [
+            [new Decimal(1), new Decimal(0)],
+            [new Decimal(0), new Decimal(1)]
+        ];
     },
-    format: function(matrix, decimals = 4) {
+    format: function(matrix, decimals = 5) { // Default decimals changed to 5
         if (!matrix || matrix.length !== 2 || matrix[0].length !== 2 || matrix[1].length !== 2) {
             return "[ Matriz Inválida ]";
         }
-        return `[ ${parseFloat(matrix[0][0]).toFixed(decimals)}  ${parseFloat(matrix[0][1]).toFixed(decimals)} ]\n[ ${parseFloat(matrix[1][0]).toFixed(decimals)}  ${parseFloat(matrix[1][1]).toFixed(decimals)} ]`;
+        const formatValue = (val) => {
+            if (!(val instanceof Decimal)) {
+                // This case should ideally not happen if previous steps are correct,
+                // but as a fallback, try to convert or return string.
+                const tempDec = new Decimal(val); // Attempt conversion
+                if (tempDec.isNaN()) {
+                     return String(val); // Or some error indicator
+                }
+                val = tempDec;
+            }
+            if (val.isNaN()) return 'NaN'; // decimal.js NaN
+            if (!val.isFinite()) { // Handles Infinity and -Infinity from decimal.js
+                return val.isNegative() ? '-∞' : '∞';
+            }
+            // Use Decimal's toFixed for rounding, then parseFloat trick for trailing zeros.
+            const fixedPrecisionString = val.toFixed(decimals);
+            return String(parseFloat(fixedPrecisionString));
+        };
+        return `[ ${formatValue(matrix[0][0])}  ${formatValue(matrix[0][1])} ]\n[ ${formatValue(matrix[1][0])}  ${formatValue(matrix[1][1])} ]`;
     }
 };
 
 // --- Lógica de Matrices Ópticas ---
 const opticalMatrices = {
     translation: function(d, n = 1.0) {
-        if (n <= 0) throw new Error("Índice 'n' debe ser > 0.");
-        return [[1, 0], [d/n, 1]];
+        const d_dec = new Decimal(d);
+        const n_dec = new Decimal(n);
+        if (n_dec.isNegative() || n_dec.isZero()) throw new Error("Índice 'n' debe ser > 0.");
+        return [[new Decimal(1), new Decimal(0)], [d_dec.dividedBy(n_dec), new Decimal(1)]];
     },
 surface: function(R, n1, n2) { // Refracción
-    if (n1 <= 0 || n2 <= 0) throw new Error("Índices 'n1' y 'n2' deben ser > 0.");
-    if (R === 0 && (n2 - n1) !== 0) {
+    const R_dec = new Decimal(R);
+    const n1_dec = new Decimal(n1);
+    const n2_dec = new Decimal(n2);
+
+    if (n1_dec.isNegative() || n1_dec.isZero() || n2_dec.isNegative() || n2_dec.isZero()) {
+        throw new Error("Índices 'n1' y 'n2' deben ser > 0.");
+    }
+    if (R_dec.isZero() && !n2_dec.equals(n1_dec)) {
         throw new Error("Radio 'R' no puede ser cero para una superficie refractiva con cambio de índice, ya que implicaría poder infinito.");
     }
-    const P_int = (typeof R === 'number' && isFinite(R) && R !== 0) ? (n2 - n1) / R : 0;
-    return [[1, -P_int], [0, 1]];
+
+    let P_int_dec;
+    if (R_dec.isZero()) {
+        P_int_dec = new Decimal(0);
+    } else {
+        P_int_dec = n2_dec.minus(n1_dec).dividedBy(R_dec);
+    }
+    return [[new Decimal(1), P_int_dec.negated()], [new Decimal(0), new Decimal(1)]];
 },
 reflectionSurface: function(R_mirror, n_medium = 1.0) { // Reflexión
-    if (n_medium <= 0) throw new Error("Índice 'n_medium' debe ser > 0.");
-    // Adjusted error message for clarity, and check n_medium is not strictly necessary if it's already checked to be > 0
-    if (R_mirror === 0) { // Simplified condition as n_medium > 0 is already guaranteed.
+    const R_mirror_dec = new Decimal(R_mirror);
+    const n_medium_dec = new Decimal(n_medium);
+
+    if (n_medium_dec.isNegative() || n_medium_dec.isZero()) {
+        throw new Error("Índice 'n_medium' debe ser > 0.");
+    }
+    if (R_mirror_dec.isZero()) {
         throw new Error("Radio 'R_mirror' no puede ser cero para un espejo, ya que implicaría poder infinito.");
     }
-    const P_reflect_term = (typeof R_mirror === 'number' && isFinite(R_mirror) && R_mirror !== 0) ? (2 * n_medium) / R_mirror : 0;
-    return [[1, P_reflect_term], [0, 1]]; // Assuming A was equivalent to P_reflect_term
+    const P_reflect_term_dec = new Decimal(2).times(n_medium_dec).dividedBy(R_mirror_dec);
+    return [[new Decimal(1), P_reflect_term_dec], [new Decimal(0), new Decimal(1)]];
 },
 thinLens: function({f, P, n_surrounding = 1.0, R1, R2, n1_incident, nl_lens, n2_exit}) {
-    let Pow_len_mm_inv;
+    let Pow_len_mm_inv_dec;
+    const n_s_dec = new Decimal(n_surrounding);
 
-    // Validate refractive indices if they are provided at the top level or part of detailed calculation
-    if (n_surrounding !== undefined && n_surrounding <= 0) {
+    if (n_s_dec.isNegative() || n_s_dec.isZero()) {
         throw new Error("Índice 'n_surrounding' del medio debe ser > 0.");
     }
-    // These will be checked again specifically if the detailed path is taken,
-    // but an early check if values are passed is good.
-    if (n1_incident !== undefined && n1_incident <= 0) {
-        throw new Error("Índice 'n1_incident' (incidente) debe ser > 0.");
-    }
-    if (nl_lens !== undefined && nl_lens <= 0) {
-        throw new Error("Índice 'nl_lens' (del lente) debe ser > 0.");
-    }
-    if (n2_exit !== undefined && n2_exit <= 0) {
-        throw new Error("Índice 'n2_exit' (de salida) debe ser > 0.");
-    }
 
-    if (P !== undefined && P !== null) { // P is Power in Diopters
-        Pow_len_mm_inv = P / 1000.0;
-    } else if (f !== undefined && f !== null) { // f is focal length in mm
-        if (f === 0) {
+    if (P !== undefined && P !== null) {
+        const P_dec = new Decimal(P);
+        Pow_len_mm_inv_dec = P_dec.dividedBy(new Decimal(1000));
+    } else if (f !== undefined && f !== null) {
+        const f_dec = new Decimal(f);
+        if (f_dec.isZero()) {
             throw new Error("Distancia focal 'f' no puede ser cero.");
         }
-        // n_surrounding must be defined (default 1.0) and positive if f is used.
-        if (n_surrounding === undefined || n_surrounding <= 0) {
-             throw new Error("Índice 'n_surrounding' del medio debe ser > 0 cuando se usa 'f'. Revise el valor proporcionado o el predeterminado.");
-        }
-        Pow_len_mm_inv = n_surrounding / f;
+        // n_s_dec (n_surrounding) already validated positive
+        Pow_len_mm_inv_dec = n_s_dec.dividedBy(f_dec);
     } else if (R1 !== undefined && R2 !== undefined && n1_incident !== undefined && nl_lens !== undefined && n2_exit !== undefined) {
-        // Using detailed parameters: Radii R1, R2 in mm. Refractive indices n1_incident, nl_lens, n2_exit.
+        const R1_dec = (R1 === "inf" || R1 === Infinity) ? new Decimal(Infinity) : new Decimal(R1);
+        const R2_dec = (R2 === "inf" || R2 === Infinity) ? new Decimal(Infinity) : new Decimal(R2);
+        const n1_incident_dec = new Decimal(n1_incident);
+        const nl_lens_dec = new Decimal(nl_lens);
+        const n2_exit_dec = new Decimal(n2_exit);
 
-        // Ensure positive refractive indices for this calculation path (critical)
-        if (n1_incident <= 0 || nl_lens <= 0 || n2_exit <= 0) {
+        if (n1_incident_dec.isNegative() || n1_incident_dec.isZero() ||
+            nl_lens_dec.isNegative() || nl_lens_dec.isZero() ||
+            n2_exit_dec.isNegative() || n2_exit_dec.isZero()) {
             throw new Error("Todos los índices de refracción (n1_incident, nl_lens, n2_exit) deben ser > 0 para el cálculo detallado.");
         }
 
-        const R1_val = (R1 === "inf" || R1 === Infinity) ? Infinity : parseFloat(R1);
-        const R2_val = (R2 === "inf" || R2 === Infinity) ? Infinity : parseFloat(R2);
-
-        if (isNaN(R1_val) || isNaN(R2_val)) {
-            throw new Error("Radios R1 y R2 deben ser números o 'inf'.");
+        let P1_surf_dec;
+        if (R1_dec.isZero()) {
+            if (!nl_lens_dec.equals(n1_incident_dec)) {
+                 throw new Error("Radio R1 no puede ser cero si los índices n1_incident y nl_lens difieren.");
+            }
+            P1_surf_dec = new Decimal(0);
+        } else if (R1_dec.isFinite()) {
+            P1_surf_dec = nl_lens_dec.minus(n1_incident_dec).dividedBy(R1_dec);
+        } else { // R1 is Infinity
+             P1_surf_dec = new Decimal(0);
         }
 
-        if (R1_val === Infinity && R2_val === Infinity) { // Both surfaces flat
-            Pow_len_mm_inv = 0;
-        } else if (R1_val === Infinity) { // First surface flat, second curved/zero
-            if (R2_val === 0 && (n2_exit - nl_lens) !== 0) {
-                throw new Error("Radio R2 no puede ser cero si R1 es infinito y hay cambio de índice en la segunda superficie (nl_lens -> n2_exit).");
-            }
-            Pow_len_mm_inv = (R2_val === 0) ? 0 : (n2_exit - nl_lens) / R2_val;
-        } else if (R2_val === Infinity) { // First surface curved/zero, second flat
-            if (R1_val === 0 && (nl_lens - n1_incident) !== 0) {
-                throw new Error("Radio R1 no puede ser cero si R2 es infinito y hay cambio de índice en la primera superficie (n1_incident -> nl_lens).");
-            }
-            Pow_len_mm_inv = (R1_val === 0) ? 0 : (nl_lens - n1_incident) / R1_val;
-        } else { // Both surfaces are curved (or potentially zero if indices match, effectively flat)
-            if (R1_val === 0 && (nl_lens - n1_incident) !== 0) {
-                throw new Error("Radio R1 no puede ser cero si los índices n1_incident y nl_lens difieren.");
-            }
-            if (R2_val === 0 && (n2_exit - nl_lens) !== 0) {
+        let P2_surf_dec;
+        if (R2_dec.isZero()) {
+            if (!n2_exit_dec.equals(nl_lens_dec)) {
                 throw new Error("Radio R2 no puede ser cero si los índices nl_lens y n2_exit difieren.");
             }
-
-            // Power of first surface. If R1_val is 0, P1 is 0 (since error for differing indices already handled).
-            const P1 = (R1_val === 0) ? 0 : (nl_lens - n1_incident) / R1_val;
-            // Power of second surface. If R2_val is 0, P2 is 0.
-            const P2 = (R2_val === 0) ? 0 : (n2_exit - nl_lens) / R2_val;
-            Pow_len_mm_inv = P1 + P2;
+            P2_surf_dec = new Decimal(0);
+        } else if (R2_dec.isFinite()){
+            P2_surf_dec = n2_exit_dec.minus(nl_lens_dec).dividedBy(R2_dec);
+        } else { // R2 is Infinity
+            P2_surf_dec = new Decimal(0);
         }
+
+        Pow_len_mm_inv_dec = P1_surf_dec.plus(P2_surf_dec);
+
     } else {
         throw new Error("Debe proveer 'f' (distancia focal) o 'P' (poder), o los parámetros detallados (R1, R2, n1_incident, nl_lens, n2_exit) para lente delgada.");
     }
-    return [[1, -Pow_len_mm_inv], [0, 1]];
+    return [[new Decimal(1), Pow_len_mm_inv_dec.negated()], [new Decimal(0), new Decimal(1)]];
 },
     thickLens: function(R1, n_inc, n_lente, d_lente, R2, n_salida) {
-        if (n_inc <= 0) throw new Error("Índice 'n_inc' debe ser > 0.");
-        if (n_lente <= 0) throw new Error("Índice 'n_lente' debe ser > 0.");
-        if (n_salida <= 0) throw new Error("Índice 'n_salida' debe ser > 0.");
-        if (d_lente < 0) throw new Error("Espesor 'd_lente' no puede ser negativo.");
+        const R1_dec = new Decimal(R1);
+        const n_inc_dec = new Decimal(n_inc);
+        const n_lente_dec = new Decimal(n_lente);
+        const d_lente_dec = new Decimal(d_lente);
+        const R2_dec = new Decimal(R2);
+        const n_salida_dec = new Decimal(n_salida);
 
-        // P1: Power of the first surface
-        if (R1 === 0 && (n_lente - n_inc) !== 0) {
-            throw new Error("Radio 'R1' no puede ser cero para la primera superficie con cambio de índice, ya que implicaría poder infinito.");
+        if (n_inc_dec.isNegative() || n_inc_dec.isZero()) throw new Error("Índice 'n_inc' debe ser > 0.");
+        if (n_lente_dec.isNegative() || n_lente_dec.isZero()) throw new Error("Índice 'n_lente' debe ser > 0.");
+        if (n_salida_dec.isNegative() || n_salida_dec.isZero()) throw new Error("Índice 'n_salida' debe ser > 0.");
+        if (d_lente_dec.isNegative()) throw new Error("Espesor 'd_lente' no puede ser negativo.");
+
+        let P1_dec;
+        if (R1_dec.isZero()) {
+            if (!n_lente_dec.equals(n_inc_dec)) {
+                throw new Error("Radio 'R1' no puede ser cero para la primera superficie con cambio de índice, ya que implicaría poder infinito.");
+            }
+            P1_dec = new Decimal(0);
+        } else {
+            P1_dec = n_lente_dec.minus(n_inc_dec).dividedBy(R1_dec);
         }
-        const P1 = (typeof R1 === 'number' && isFinite(R1) && R1 !== 0) ? (n_lente - n_inc) / R1 : 0;
 
-        // P2: Power of the second surface
-        if (R2 === 0 && (n_salida - n_lente) !== 0) {
-            throw new Error("Radio 'R2' no puede ser cero para la segunda superficie con cambio de índice, ya que implicaría poder infinito.");
+        let P2_dec;
+        if (R2_dec.isZero()) {
+            if (!n_salida_dec.equals(n_lente_dec)) {
+                throw new Error("Radio 'R2' no puede ser cero para la segunda superficie con cambio de índice, ya que implicaría poder infinito.");
+            }
+            P2_dec = new Decimal(0);
+        } else {
+            P2_dec = n_salida_dec.minus(n_lente_dec).dividedBy(R2_dec);
         }
-        const P2 = (typeof R2 === 'number' && isFinite(R2) && R2 !== 0) ? (n_salida - n_lente) / R2 : 0;
 
-        // n_lente === 0 check is critical for denominators involving n_lente.
-        // This check should ideally be done before P1 or P2 if they depended on n_lente in a division, but they don't directly.
-        // It's crucial for the matrix elements M11, M12, M21, M22.
-        if (n_lente === 0) throw new Error("Índice 'n_lente' no puede ser cero para el cálculo de la lente gruesa, resultaría en división por cero.");
+        if (n_lente_dec.isZero()) {
+            throw new Error("Índice 'n_lente' no puede ser cero para el cálculo de la lente gruesa, resultaría en división por cero.");
+        }
 
-        const M11 = 1 - ((P2 * d_lente) / n_lente);
-        const M12 = ((P1 * P2 * d_lente) / n_lente) - P1 - P2;
-        const M21 = d_lente / n_lente;
-        const M22 = 1 - ((P1 * d_lente) / n_lente);
+        const M11 = new Decimal(1).minus(P2_dec.times(d_lente_dec).dividedBy(n_lente_dec));
+        const M12 = P1_dec.times(P2_dec).times(d_lente_dec).dividedBy(n_lente_dec).minus(P1_dec).minus(P2_dec);
+        const M21 = d_lente_dec.dividedBy(n_lente_dec);
+        const M22 = new Decimal(1).minus(P1_dec.times(d_lente_dec).dividedBy(n_lente_dec));
         
         return [[M11, M12], [M21, M22]];
     }
@@ -402,42 +467,52 @@ thinLens: function({f, P, n_surrounding = 1.0, R1, R2, n1_incident, nl_lens, n2_
 // --- Calculadora de Poder Óptico ---
 const powerCalculator = {
     interfacePower: function(R, n1, n2) { // R en mm, para refracción
-        if (R === 0) throw new Error("Radio 'R' no puede ser cero.");
-        if (n1 <= 0 || n2 <= 0) throw new Error("Índices 'n1', 'n2' deben ser > 0.");
-        const R_m = R / 1000.0; 
-        return (n2 - n1) / R_m; // Dioptrías
+        const R_dec = new Decimal(R);
+        const n1_dec = new Decimal(n1);
+        const n2_dec = new Decimal(n2);
+
+        if (R_dec.isZero()) throw new Error("Radio 'R' no puede ser cero.");
+        if (n1_dec.isNegative() || n1_dec.isZero() || n2_dec.isNegative() || n2_dec.isZero()) {
+            throw new Error("Índices 'n1', 'n2' deben ser > 0.");
+        }
+        const R_m_dec = R_dec.dividedBy(new Decimal(1000));
+        return n2_dec.minus(n1_dec).dividedBy(R_m_dec); // Returns a Decimal object
     },
     mirrorPower: function(R_mirror, n_medium = 1.0) { // R_mirror en mm
-        // Convención común para espejos: R > 0 cóncavo, R < 0 convexo.
-        // Poder P = -2n / R_mirror (si R_mirror es el radio del espejo)
-        // O P = -2 / R_m (si R_m es el radio de curvatura de la superficie en metros, n=1)
-        if (R_mirror === 0) throw new Error("Radio 'R' del espejo no puede ser cero.");
-        if (n_medium <= 0) throw new Error("Índice 'n_medium' debe ser > 0.");
-        const R_mirror_m = R_mirror / 1000.0;
-        // Usando la convención de R > 0 para cóncavo (f=-R/2n), P = -2n/R
-        // Si R es el radio de curvatura de la superficie (R>0 centro a la derecha),
-        // un espejo cóncavo tiene R < 0. P = -2n/R.
-        // Para mantener consistencia con la matriz de reflexión [[1,0],[-2/R_surface,-1]],
-        // el poder asociado a ese elemento es -2/R_surface (en 1/mm).
-        // En dioptrías (1/m): -2/(R_surface/1000) = -2000/R_surface.
-        // Esta es la potencia si n=1. Si está en un medio n: P = -2n / R_surface_metros
-        return (-2 * n_medium) / R_mirror_m; // Dioptrías
+        const R_mirror_dec = new Decimal(R_mirror);
+        const n_medium_dec = new Decimal(n_medium);
+
+        if (R_mirror_dec.isZero()) throw new Error("Radio 'R' del espejo no puede ser cero.");
+        if (n_medium_dec.isNegative() || n_medium_dec.isZero()) throw new Error("Índice 'n_medium' debe ser > 0.");
+
+        const R_mirror_m_dec = R_mirror_dec.dividedBy(new Decimal(1000));
+        return new Decimal(-2).times(n_medium_dec).dividedBy(R_mirror_m_dec); // Returns a Decimal object
     },
     thinLensPower: function(f) { // f en mm
-        if (f === 0) throw new Error("Focal 'f' no puede ser cero.");
-        const f_m = f / 1000.0; 
-        return 1 / f_m; // Dioptrías
+        const f_dec = new Decimal(f);
+        if (f_dec.isZero()) throw new Error("Focal 'f' no puede ser cero.");
+        const f_m_dec = f_dec.dividedBy(new Decimal(1000));
+        return new Decimal(1).dividedBy(f_m_dec); // Returns a Decimal object
     },
     thickLensPower: function(R1, n_aire, n_vidrio, d_lente, R2) { // Distancias en mm
-        if (n_vidrio <= 0) throw new Error("Índice 'n_vidrio' debe ser > 0.");
-        if (d_lente < 0) throw new Error("Espesor 'd_lente' debe ser >= 0.");
+        const n_vidrio_dec = new Decimal(n_vidrio);
+        const d_lente_dec = new Decimal(d_lente);
 
-        const P1 = this.interfacePower(R1, n_aire, n_vidrio);
-        const P2 = this.interfacePower(R2, n_vidrio, n_aire);
-        const d_lente_m = d_lente / 1000.0;
+        if (n_vidrio_dec.isNegative() || n_vidrio_dec.isZero()) throw new Error("Índice 'n_vidrio' debe ser > 0.");
+        if (d_lente_dec.isNegative()) throw new Error("Espesor 'd_lente' debe ser >= 0.");
 
-        const P_total = P1 + P2 - (d_lente_m / n_vidrio) * P1 * P2;
-        return { P1, P2, P_total };
+        // interfacePower itself handles conversion of its inputs to Decimal and returns Decimal
+        const P1_dec = this.interfacePower(R1, n_aire, n_vidrio);
+        const P2_dec = this.interfacePower(R2, n_vidrio, n_aire);
+
+        const d_lente_m_dec = d_lente_dec.dividedBy(new Decimal(1000));
+
+        // P1_dec and P2_dec are already Decimal objects
+        const term_P1P2 = P1_dec.times(P2_dec);
+        const term_dLente_nVidrio = d_lente_m_dec.dividedBy(n_vidrio_dec);
+        const P_total_dec = P1_dec.plus(P2_dec).minus(term_dLente_nVidrio.times(term_P1P2));
+
+        return { P1: P1_dec, P2: P2_dec, P_total: P_total_dec }; // object of Decimal objects
     }
 };
 
@@ -568,7 +643,7 @@ function createInputField(id, label, type = 'number', value = '', placeholder = 
     inputEl.value = value;
     inputEl.placeholder = placeholder;
     if (required) inputEl.required = true;
-    if (type === 'number') inputEl.step = step;
+    if (type === 'number') inputEl.step = (step === 'any' ? "0.0000000001" : step);
     inputEl.classList.add('w-full', 'p-2', 'border', 'border-slate-300', 'rounded-md', 'shadow-sm', 'focus:ring-sky-500', 'focus:border-sky-500');
     
     div.appendChild(labelEl);
@@ -634,8 +709,8 @@ function updateParamsForm(type, params = {}) {
 
     switch (type) {
         case 'translation':
-            fields.push(createInputField('d', 'Distancia d (mm):', 'number', params.d || '', 'ej: 50'));
-            fields.push(createInputField('n_trans', 'Índice n (medio):', 'number', params.n_trans || '1.0', 'ej: 1.0', true, '0.001'));
+            fields.push(createInputField('d', 'Distancia d (mm):', 'number', params.d || '', 'ej: 50', true, "0.0000000001"));
+            fields.push(createInputField('n_trans', 'Índice n (medio):', 'number', params.n_trans || '1.0', 'ej: 1.0', true, "0.0000000001"));
             break;
 case 'thin_lens':
     // Determine if initially in detailed mode based on presence of detailed params
@@ -655,11 +730,11 @@ case 'thin_lens':
     detailedParamsDiv.id = 'thin_lens_detailed_params_div';
     detailedParamsDiv.classList.add('space-y-3', 'p-3', 'border', 'border-sky-200', 'rounded-md', 'mt-2');
 
-    detailedParamsDiv.appendChild(createRadiusField('R1_tl', 'Radio R₁ (mm):', params.R1_tl, 'ej: 100 (+ sup. convexa)', true, 'any', params.R1_tl === Infinity || params.R1_tl === "inf"));
-    detailedParamsDiv.appendChild(createInputField('n1_incident_tl', 'Índice Incidente n₁:', 'number', params.n1_incident_tl || '1.0', 'ej: 1.0', true, '0.001'));
-    detailedParamsDiv.appendChild(createInputField('nl_lens_tl', 'Índice de la Lente nL:', 'number', params.nl_lens_tl || '1.5', 'ej: 1.5', true, '0.001'));
-    detailedParamsDiv.appendChild(createRadiusField('R2_tl', 'Radio R₂ (mm):', params.R2_tl, 'ej: -100 (+ sup. cóncava)', true, 'any', params.R2_tl === Infinity || params.R2_tl === "inf"));
-    detailedParamsDiv.appendChild(createInputField('n2_exit_tl', 'Índice de Salida n₂:', 'number', params.n2_exit_tl || '1.0', 'ej: 1.0', true, '0.001'));
+    detailedParamsDiv.appendChild(createRadiusField('R1_tl', 'Radio R₁ (mm):', params.R1_tl, 'ej: 100 (+ sup. convexa)', true, "0.0000000001", params.R1_tl === Infinity || params.R1_tl === "inf"));
+    detailedParamsDiv.appendChild(createInputField('n1_incident_tl', 'Índice Incidente n₁:', 'number', params.n1_incident_tl || '1.0', 'ej: 1.0', true, "0.0000000001"));
+    detailedParamsDiv.appendChild(createInputField('nl_lens_tl', 'Índice de la Lente nL:', 'number', params.nl_lens_tl || '1.5', 'ej: 1.5', true, "0.0000000001"));
+    detailedParamsDiv.appendChild(createRadiusField('R2_tl', 'Radio R₂ (mm):', params.R2_tl, 'ej: -100 (+ sup. cóncava)', true, "0.0000000001", params.R2_tl === Infinity || params.R2_tl === "inf"));
+    detailedParamsDiv.appendChild(createInputField('n2_exit_tl', 'Índice de Salida n₂:', 'number', params.n2_exit_tl || '1.0', 'ej: 1.0', true, "0.0000000001"));
 
     const focalPowerParamsDiv = document.createElement('div');
     focalPowerParamsDiv.id = 'thin_lens_focal_power_div';
@@ -669,9 +744,9 @@ case 'thin_lens':
     const usePowerCheckboxContainer = createCheckboxField('use_power', 'Usar Potencia P (Dioptrías) en lugar de f', initialUsePower);
     const usePowerCheckbox = usePowerCheckboxContainer.querySelector('input[type="checkbox"]');
     focalPowerParamsDiv.appendChild(usePowerCheckboxContainer);
-    focalPowerParamsDiv.appendChild(createInputField('f', 'Distancia Focal f (mm):', 'number', params.f || '', 'ej: 100 (+ convergente)', !initialUsePower, 'any'));
-    focalPowerParamsDiv.appendChild(createInputField('P', 'Potencia P (Dioptrías):', 'number', params.P || '', 'ej: 10 (+ convergente)', initialUsePower, 'any'));
-    focalPowerParamsDiv.appendChild(createInputField('n_surrounding_tl', 'Índice Medio Circundante n (para cálculo con f):', 'number', params.n_surrounding_tl || '1.0', 'ej: 1.0', true, '0.001'));
+    focalPowerParamsDiv.appendChild(createInputField('f', 'Distancia Focal f (mm):', 'number', params.f || '', 'ej: 100 (+ convergente)', !initialUsePower, "0.0000000001"));
+    focalPowerParamsDiv.appendChild(createInputField('P', 'Potencia P (Dioptrías):', 'number', params.P || '', 'ej: 10 (+ convergente)', initialUsePower, "0.0000000001"));
+    focalPowerParamsDiv.appendChild(createInputField('n_surrounding_tl', 'Índice Medio Circundante n (para cálculo con f):', 'number', params.n_surrounding_tl || '1.0', 'ej: 1.0', true, "0.0000000001"));
 
     paramsContainer.innerHTML = '';
     paramsContainer.appendChild(inputMethodChoiceDiv);
@@ -774,11 +849,11 @@ case 'thin_lens':
                 (typeof params.R_surf === 'number' && isFinite(params.R_surf)) ? params.R_surf : '',
                 'ej: 100 (positivo convexo)',
                 true,
-                'any',
+                "0.0000000001",
                 typeof params.R_surf === 'number' && !isFinite(params.R_surf)
             ));
-            fields.push(createInputField('n1_surf', 'Índice Incidente n₁:', 'number', params.n1_surf || '1.0', 'ej: 1.0', true, '0.001'));
-            fields.push(createInputField('n2_surf', 'Índice Transmitido n₂:', 'number', params.n2_surf || '1.5', 'ej: 1.5', true, '0.001'));
+            fields.push(createInputField('n1_surf', 'Índice Incidente n₁:', 'number', params.n1_surf || '1.0', 'ej: 1.0', true, "0.0000000001"));
+            fields.push(createInputField('n2_surf', 'Índice Transmitido n₂:', 'number', params.n2_surf || '1.5', 'ej: 1.5', true, "0.0000000001"));
             break;
         case 'reflection_surface': // Reflexión
             fields.push(createRadiusField(
@@ -787,12 +862,12 @@ case 'thin_lens':
                 (typeof params.R_reflect === 'number' && isFinite(params.R_reflect)) ? params.R_reflect : '',
                 'ej: 200 (R>0 cóncavo)',
                 true,
-                'any',
+                "0.0000000001",
                 typeof params.R_reflect === 'number' && !isFinite(params.R_reflect)
             ));
             // n_medium is not directly in the matrix [[1,0],[-2/R, -1]] but good for consistency if we extend.
             // For now, the matrix form used does not require n_medium directly.
-            // fields.push(createInputField('n_medium_reflect', 'Índice del Medio n:', 'number', params.n_medium_reflect || '1.0', 'ej: 1.0', true, '0.001'));
+            // fields.push(createInputField('n_medium_reflect', 'Índice del Medio n:', 'number', params.n_medium_reflect || '1.0', 'ej: 1.0', true, "0.0000000001"));
             break;
         case 'thick_lens':
             fields.push(createRadiusField(
@@ -801,22 +876,22 @@ case 'thin_lens':
                 (typeof params.R1_thick === 'number' && isFinite(params.R1_thick)) ? params.R1_thick : '',
                 'ej: 100',
                 true,
-                'any',
+                "0.0000000001",
                 typeof params.R1_thick === 'number' && !isFinite(params.R1_thick)
             ));
-            fields.push(createInputField('n_inc_thick', 'Índice Incidente n_inc:', 'number', params.n_inc_thick || '1.0', 'ej: 1.0', true, '0.001'));
-            fields.push(createInputField('n_lente_thick', 'Índice de la Lente n_lente:', 'number', params.n_lente_thick || '1.5', 'ej: 1.5', true, '0.001'));
-            fields.push(createInputField('d_lente_thick', 'Espesor Lente d_lente (mm):', 'number', params.d_lente_thick || '', 'ej: 5'));
+            fields.push(createInputField('n_inc_thick', 'Índice Incidente n_inc:', 'number', params.n_inc_thick || '1.0', 'ej: 1.0', true, "0.0000000001"));
+            fields.push(createInputField('n_lente_thick', 'Índice de la Lente n_lente:', 'number', params.n_lente_thick || '1.5', 'ej: 1.5', true, "0.0000000001"));
+            fields.push(createInputField('d_lente_thick', 'Espesor Lente d_lente (mm):', 'number', params.d_lente_thick || '', 'ej: 5', true, "0.0000000001"));
             fields.push(createRadiusField(
                 'R2_thick',
                 'Radio Superficie Posterior R₂ (mm):',
                 (typeof params.R2_thick === 'number' && isFinite(params.R2_thick)) ? params.R2_thick : '',
                 'ej: -100',
                 true,
-                'any',
+                "0.0000000001",
                 typeof params.R2_thick === 'number' && !isFinite(params.R2_thick)
             ));
-            fields.push(createInputField('n_salida_thick', 'Índice de Salida n_salida:', 'number', params.n_salida_thick || '1.0', 'ej: 1.0', true, '0.001'));
+            fields.push(createInputField('n_salida_thick', 'Índice de Salida n_salida:', 'number', params.n_salida_thick || '1.0', 'ej: 1.0', true, "0.0000000001"));
             break;
     }
     fields.forEach(field => paramsContainer.appendChild(field));
@@ -1249,11 +1324,11 @@ function updatePowerCalculatorForm(type, params = {}) {
                 (typeof params.R_surf === 'number' && isFinite(params.R_surf)) ? params.R_surf : '',
                 'ej: 100',
                 true,
-                'any',
+                "0.0000000001",
                 typeof params.R_surf === 'number' && !isFinite(params.R_surf)
             ));
-            fields.push(createInputField('power_n1_surf', 'Índice n₁:', 'number', params.n1_surf || '1.0', 'ej: 1.0', true, '0.001'));
-            fields.push(createInputField('power_n2_surf', 'Índice n₂:', 'number', params.n2_surf || '1.5', 'ej: 1.5', true, '0.001'));
+            fields.push(createInputField('power_n1_surf', 'Índice n₁:', 'number', params.n1_surf || '1.0', 'ej: 1.0', true, "0.0000000001"));
+            fields.push(createInputField('power_n2_surf', 'Índice n₂:', 'number', params.n2_surf || '1.5', 'ej: 1.5', true, "0.0000000001"));
             break;
         case 'mirror_power': // Reflexión
             fields.push(createRadiusField(
@@ -1262,13 +1337,13 @@ function updatePowerCalculatorForm(type, params = {}) {
                 (typeof params.R_mirror === 'number' && isFinite(params.R_mirror)) ? params.R_mirror : '',
                 'ej: 200 (R>0 cóncavo)',
                 true,
-                'any',
+                "0.0000000001",
                 typeof params.R_mirror === 'number' && !isFinite(params.R_mirror)
             ));
-            fields.push(createInputField('power_n_medium_mirror', 'Índice del Medio n:', 'number', params.n_medium_mirror || '1.0', 'ej: 1.0', true, '0.001'));
+            fields.push(createInputField('power_n_medium_mirror', 'Índice del Medio n:', 'number', params.n_medium_mirror || '1.0', 'ej: 1.0', true, "0.0000000001"));
             break;
         case 'thin_lens_power':
-            fields.push(createInputField('power_f_tl', 'Distancia Focal f (mm):', 'number', params.f_tl || '', 'ej: 100'));
+            fields.push(createInputField('power_f_tl', 'Distancia Focal f (mm):', 'number', params.f_tl || '', 'ej: 100', true, "0.0000000001"));
             break;
         case 'thick_lens_power':
             fields.push(createRadiusField(
@@ -1277,19 +1352,19 @@ function updatePowerCalculatorForm(type, params = {}) {
                 (typeof params.R1_thick_p === 'number' && isFinite(params.R1_thick_p)) ? params.R1_thick_p : '',
                 'ej: 100',
                 true,
-                'any',
+                "0.0000000001",
                 typeof params.R1_thick_p === 'number' && !isFinite(params.R1_thick_p)
             ));
-            fields.push(createInputField('power_n_aire_thick_p', 'Índice Aire/Incidente n_aire:', 'number', params.n_aire_thick_p || '1.0', 'ej: 1.0', true, '0.001'));
-            fields.push(createInputField('power_n_vidrio_thick_p', 'Índice Vidrio n_vidrio:', 'number', params.n_vidrio_thick_p || '1.5', 'ej: 1.5', true, '0.001'));
-            fields.push(createInputField('power_d_lente_thick_p', 'Espesor d (mm):', 'number', params.d_lente_thick_p || '', 'ej: 5'));
+            fields.push(createInputField('power_n_aire_thick_p', 'Índice Aire/Incidente n_aire:', 'number', params.n_aire_thick_p || '1.0', 'ej: 1.0', true, "0.0000000001"));
+            fields.push(createInputField('power_n_vidrio_thick_p', 'Índice Vidrio n_vidrio:', 'number', params.n_vidrio_thick_p || '1.5', 'ej: 1.5', true, "0.0000000001"));
+            fields.push(createInputField('power_d_lente_thick_p', 'Espesor d (mm):', 'number', params.d_lente_thick_p || '', 'ej: 5', true, "0.0000000001"));
             fields.push(createRadiusField(
                 'power_R2_thick_p',
                 'Radio R₂ (mm):',
                 (typeof params.R2_thick_p === 'number' && isFinite(params.R2_thick_p)) ? params.R2_thick_p : '',
                 'ej: -100',
                 true,
-                'any',
+                "0.0000000001",
                 typeof params.R2_thick_p === 'number' && !isFinite(params.R2_thick_p)
             ));
             break;
@@ -1357,22 +1432,22 @@ function handlePowerCalculation() {
                 const n2_int = getPowerValidatedFloat('power_n2_surf', 'Índice n₂', false, false);
                 if (valid) {
                     const P = powerCalculator.interfacePower(R_int, n1_int, n2_int);
-                    resultText = `Poder de Interfase (Refracción):\n${P.toFixed(2)} D`;
+                    resultText = `Poder de Interfase (Refracción):\n${formatNumber(P)} D`;
                 }
                 break;
             case 'mirror_power':
                 const R_mir = getPowerValidatedFloat('power_R_mirror', 'Radio Espejo R', false);
                 const n_med_mir = getPowerValidatedFloat('power_n_medium_mirror', 'Índice Medio n', false, false);
                 if (valid) {
-                    const P = powerCalculator.mirrorPower(R_mir, n_med_mir);
-                    resultText = `Poder del Espejo Esférico:\n${P.toFixed(2)} D (R=${R_mir}mm, n=${n_med_mir})`;
+                    const P_mirror = powerCalculator.mirrorPower(R_mir, n_med_mir);
+                    resultText = `Poder del Espejo Esférico:\n${formatNumber(P_mirror)} D (R=${formatNumber(R_mir)}mm, n=${formatNumber(n_med_mir)})`;
                 }
                 break;
             case 'thin_lens_power':
                 const f_tl = getPowerValidatedFloat('power_f_tl', 'Focal f', false);
                 if (valid) {
-                    const P = powerCalculator.thinLensPower(f_tl);
-                    resultText = `Poder Lente Delgado:\n${P.toFixed(2)} D`;
+                    const P_thin_lens = powerCalculator.thinLensPower(f_tl);
+                    resultText = `Poder Lente Delgado:\n${formatNumber(P_thin_lens)} D`;
                 }
                 break;
             case 'thick_lens_power':
@@ -1388,9 +1463,9 @@ function handlePowerCalculation() {
 
                 if (valid) {
                     const { P1, P2, P_total } = powerCalculator.thickLensPower(R1_thick_p, n_aire_p, n_vidrio_p, d_lente_p, R2_thick_p);
-                    resultText = `Poder Superficie Frontal (P₁): ${P1.toFixed(2)} D\n`;
-                    resultText += `Poder Superficie Posterior (P₂): ${P2.toFixed(2)} D\n`;
-                    resultText += `Poder Total Lente Grueso: ${P_total.toFixed(2)} D`;
+                    resultText = `Poder Superficie Frontal (P₁): ${formatNumber(P1)} D\n`;
+                    resultText += `Poder Superficie Posterior (P₂): ${formatNumber(P2)} D\n`;
+                    resultText += `Poder Total Lente Grueso: ${formatNumber(P_total)} D`;
                 }
                 break;
         }
@@ -1428,23 +1503,53 @@ function closeSystemPropertiesModal() {
 }
 
 function computeSystemProperties(matrix, nObj, nImg, distObj, objSize) {
-    const A = matrix[0][0], B = matrix[0][1], C = matrix[1][0], D = matrix[1][1];
-    if (B === 0) throw new Error('El elemento B de la matriz es cero.');
-    const poder = -B;
-    const foco = nObj / poder;
-    const foco_prima = nImg / poder;
-    const D_in = (nObj / B) * (1 - A);
-    const D_out = (nImg / B) * (1 - D);
-    const S = distObj - D_in;
-    if (S === 0) throw new Error('Distancia objeto igual a plano principal.');
-    const Sprima = nImg / (poder - (nObj / S));
-    const mL = -(Sprima / S);
-    const mA = -(nImg / nObj) * (S / Sprima);
-    const distVI = D_out + Sprima;
-    const lf1 = D_in + foco;
-    const lf2 = D_out + foco_prima;
-    const tamanoImg = mL * objSize;
-    return {poder,foco,foco_prima,D_in,D_out,S,Sprima,mL,mA,distVI,lf1,lf2,tamanoImg};
+    // matrix elements A, B, C, D are already Decimal objects
+    const A = matrix[0][0];
+    const B = matrix[0][1];
+    // const C = matrix[1][0]; // C is not used in these specific calculations
+    const D = matrix[1][1];
+
+    const nObj_dec = new Decimal(nObj);
+    const nImg_dec = new Decimal(nImg);
+    const distObj_dec = new Decimal(distObj);
+    const objSize_dec = new Decimal(objSize);
+
+    if (B.isZero()) throw new Error('El elemento B de la matriz es cero.');
+
+    const poder_dec = B.negated();
+    const foco_dec = nObj_dec.dividedBy(poder_dec);
+    const foco_prima_dec = nImg_dec.dividedBy(poder_dec);
+
+    const D_in_dec = nObj_dec.dividedBy(B).times(new Decimal(1).minus(A));
+    const D_out_dec = nImg_dec.dividedBy(B).times(new Decimal(1).minus(D));
+
+    const S_dec = distObj_dec.minus(D_in_dec);
+    if (S_dec.isZero()) throw new Error('Distancia objeto igual a plano principal (S=0).');
+
+    const Sprima_dec = nImg_dec.dividedBy(poder_dec.minus(nObj_dec.dividedBy(S_dec)));
+    const mL_dec = Sprima_dec.dividedBy(S_dec).negated();
+    const mA_dec = nImg_dec.dividedBy(nObj_dec).times(S_dec.dividedBy(Sprima_dec)).negated(); // mA = -(n'/n) * (S/S')
+
+    const distVI_dec = D_out_dec.plus(Sprima_dec);
+    const lf1_dec = D_in_dec.plus(foco_dec);
+    const lf2_dec = D_out_dec.plus(foco_prima_dec);
+    const tamanoImg_dec = mL_dec.times(objSize_dec);
+
+    return {
+        poder: poder_dec,
+        foco: foco_dec,
+        foco_prima: foco_prima_dec,
+        D_in: D_in_dec,
+        D_out: D_out_dec,
+        S: S_dec,
+        Sprima: Sprima_dec,
+        mL: mL_dec,
+        mA: mA_dec,
+        distVI: distVI_dec,
+        lf1: lf1_dec,
+        lf2: lf2_dec,
+        tamanoImg: tamanoImg_dec
+    };
 }
 
 function handleSystemPropertiesCalculation() {
@@ -1456,19 +1561,19 @@ function handleSystemPropertiesCalculation() {
     try {
         const p = computeSystemProperties(latestTotalMatrix, nObj, nImg, distObj, objSize);
         resultText =
-`Poder del Sistema: ${p.poder.toFixed(4)}
-foco (f): ${p.foco.toFixed(4)} mm
-foco* (f*): ${p.foco_prima.toFixed(4)} mm
-D: ${p.D_in.toFixed(4)} mm
-D*: ${p.D_out.toFixed(4)} mm
-S: ${p.S.toFixed(4)} mm
-S*: ${p.Sprima.toFixed(4)} mm
-Magnificación lateral: ${p.mL.toFixed(4)}
-Magnificación angular: ${p.mA.toFixed(4)}
-Distancia vértice-imagen: ${p.distVI.toFixed(4)} mm
-lf: ${p.lf1.toFixed(4)} mm
-lf*: ${p.lf2.toFixed(4)} mm
-Tamaño Imagen: ${p.tamanoImg.toFixed(4)}`;
+`Poder del Sistema: ${formatNumber(p.poder)}
+foco (f): ${formatNumber(p.foco)} mm
+foco* (f*): ${formatNumber(p.foco_prima)} mm
+D: ${formatNumber(p.D_in)} mm
+D*: ${formatNumber(p.D_out)} mm
+S: ${formatNumber(p.S)} mm
+S*: ${formatNumber(p.Sprima)} mm
+Magnificación lateral: ${formatNumber(p.mL)}
+Magnificación angular: ${formatNumber(p.mA)}
+Distancia vértice-imagen: ${formatNumber(p.distVI)} mm
+lf: ${formatNumber(p.lf1)} mm
+lf*: ${formatNumber(p.lf2)} mm
+Tamaño Imagen: ${formatNumber(p.tamanoImg)}`;
         systemPropertiesResult.classList.remove('hidden','text-red-700','bg-red-50');
         systemPropertiesResult.classList.add('text-purple-700','bg-purple-50');
         systemPropertiesResult.textContent = resultText;
