@@ -877,6 +877,7 @@ case 'thin_lens':
                 "0.0000000001",
                 typeof params.R_reflect === 'number' && !isFinite(params.R_reflect)
             ));
+            fields.push(createInputField('n_medium_reflect', 'Índice del Medio n:', 'number', params.n_medium_reflect || '1.0', 'ej: 1.0', true, "0.0000000001"));
             // n_medium is not directly in the matrix [[1,0],[-2/R, -1]] but good for consistency if we extend.
             // For now, the matrix form used does not require n_medium directly.
             // fields.push(createInputField('n_medium_reflect', 'Índice del Medio n:', 'number', params.n_medium_reflect || '1.0', 'ej: 1.0', true, "0.0000000001"));
@@ -1039,7 +1040,7 @@ case 'thin_lens':
             break;
         case 'reflection_surface': // Reflexión
             params.R_reflect = getValidatedFloat('R_reflect', 'Radio Espejo R', false, true);
-            // params.n_medium_reflect = getValidatedFloat('n_medium_reflect', 'Índice Medio n', false, false);
+            params.n_medium_reflect = getValidatedFloat('n_medium_reflect', 'Índice Medio n', false, false);
             break;
         case 'thick_lens':
             params.R1_thick = getValidatedFloat('R1_thick', 'Radio R₁', false, true);
@@ -1130,7 +1131,7 @@ function renderPhaseList() {
                 paramsText = `R=${Rtxt}mm, n₁=${formatNumber(phase.params.n1_surf,3)}→n₂=${formatNumber(phase.params.n2_surf,3)}`;
             } else if (phase.type === 'reflection_surface') {
                 const Rtxt = !isFinite(phase.params.R_reflect) ? '∞' : `${phase.params.R_reflect > 0 ? '+' : ''}${formatNumber(phase.params.R_reflect,2)}`;
-                paramsText = `R_espejo=${Rtxt}mm`;
+                paramsText = `R_espejo=${Rtxt}mm, n_medio=${formatNumber(phase.params.n_medium_reflect,3)}`;
             } else if (phase.type === 'thick_lens') {
                 const R1txt = formatNumber(phase.params.R1_thick,2);
                 const R2txt = formatNumber(phase.params.R2_thick,2);
@@ -1187,7 +1188,7 @@ function calculateAndDisplayMatrices() {
                     phase.matrix = opticalMatrices.surface(phase.params.R_surf, phase.params.n1_surf, phase.params.n2_surf);
                     break;
                 case 'reflection_surface': // Reflexión
-                    phase.matrix = opticalMatrices.reflectionSurface(phase.params.R_reflect /*, phase.params.n_medium_reflect */);
+                    phase.matrix = opticalMatrices.reflectionSurface(phase.params.R_reflect, phase.params.n_medium_reflect );
                     break;
                 case 'thick_lens':
                     phase.matrix = opticalMatrices.thickLens(
@@ -1657,7 +1658,7 @@ importSystemInput.addEventListener('change', (event) => {
                                     case 'translation': matrix = opticalMatrices.translation(phaseData.params.d, phaseData.params.n_trans); break;
                                     case 'thin_lens': matrix = opticalMatrices.thinLens({f: phaseData.params.f, P: phaseData.params.P}); break;
                                     case 'surface': matrix = opticalMatrices.surface(phaseData.params.R_surf, phaseData.params.n1_surf, phaseData.params.n2_surf); break;
-                                    case 'reflection_surface': matrix = opticalMatrices.reflectionSurface(phaseData.params.R_reflect /*, phaseData.params.n_medium_reflect*/); break;
+                                    case 'reflection_surface': matrix = opticalMatrices.reflectionSurface(phaseData.params.R_reflect, phaseData.params.n_medium_reflect); break;
                                     case 'thick_lens': matrix = opticalMatrices.thickLens(phaseData.params.R1_thick, phaseData.params.n_inc_thick, phaseData.params.n_lente_thick, phaseData.params.d_lente_thick, phaseData.params.R2_thick, phaseData.params.n_salida_thick); break;
                                     default: throw new Error(`Tipo de fase desconocido: ${phaseData.type}`);
                                 }
